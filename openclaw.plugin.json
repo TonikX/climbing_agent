@@ -1,0 +1,26 @@
+{
+  "id": "climbing-journal",
+  "name": "Climbing Journal",
+  "description": "Structured multi-user climbing journal with active training sessions, routes, areas, sectors, gear and user-reported weather.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "start_climbing_training",
+      "append_climbing_attempt",
+      "save_climbing_training",
+      "update_climbing_training",
+      "finish_climbing_training",
+      "upsert_climbing_gear",
+      "find_climbing_routes",
+      "get_climbing_trainings"
+    ]
+  }
+}

@@ -216,3 +216,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# OpenClaw TypeScript plugin
+node_modules/
+dist/
+server-baseline/
+*.tsbuildinfo
+
+# Runtime data and secrets
+data/
+.env
+.env.*
+!.env.example
+backups/
+coverage/
+*.log
