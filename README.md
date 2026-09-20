@@ -40,7 +40,8 @@ npm run plugin:validate
 - `src/domain/merge-attempts.ts` — правила сопоставления сводки и событий.
 - `src/storage/store.ts` — граница хранилища текущего JSON MVP.
 - `src/storage/json-store.ts` — блокировка, чтение и запись JSON.
-- `backend/` — FastAPI, SQLAlchemy и Alembic для PostgreSQL.
+- `backend/` — FastAPI, SQLAlchemy и Alembic; начальная схема включает каталог
+  locations/sections/routes, gear и журнал тренировок.
 - `compose.yaml` — OpenClaw, API, PostgreSQL и Nginx.
 - `deploy/` — образы OpenClaw и конфигурация Nginx.
 - `skills/climbing-journal/SKILL.md` — инструкции агенту; исходник хранится в Git.

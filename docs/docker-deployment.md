@@ -14,7 +14,9 @@ PostgreSQL и FastAPI не публикуют порты на хост. Gateway 
 
 FastAPI содержит health/readiness, разрешение пользователя по external identity,
 создание и чтение тренировок, добавление отдельного route event и завершение
-тренировки. Данные сохраняются в PostgreSQL, схема создаётся Alembic.
+тренировки. Начальная схема PostgreSQL также содержит locations, sections,
+routes, gear, связи тренировок, external refs и idempotency keys. Каталожные
+HTTP endpoints будут добавлены следующим этапом. Схема создаётся Alembic.
 
 OpenClaw и существующий TypeScript-плагин включены в образ. Пока плагин продолжает
 писать legacy JSON в persistent workspace. Переключение всех восьми инструментов

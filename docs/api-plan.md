@@ -91,8 +91,9 @@ Unnamed маршруты не создают каталог автоматиче
 
 1. Утвердить auth и границу доверия Telegram; определить timezone пользователя.
 2. Описать типизированные entities, HTTP-схемы, OpenAPI и ошибки.
-3. Расширить начальную PostgreSQL schema до locations/sections/routes/gear,
-   ownership constraints и полных async repositories.
+3. Начальная PostgreSQL schema уже включает locations/sections/routes/gear,
+   связи тренировок, external refs и idempotency keys. Следующий шаг — полные
+   async repositories и HTTP endpoints поверх этих таблиц.
 4. Подготовить отдельный dry-run importer legacy JSON: валидация, отчёт о
    неоднозначностях, сохранение IDs, backup и сверка количества/ссылок.
    Никакой автоматической миграции при старте сервера.

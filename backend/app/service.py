@@ -13,13 +13,16 @@ async def resolve_user(session: AsyncSession, command: UserResolveRequest) -> Us
     ref = await session.scalar(
         select(ExternalRef).options(selectinload(ExternalRef.user)).where(
             ExternalRef.system == command.system,
+            ExternalRef.entity_type == "user",
             ExternalRef.external_id == command.external_id,
         )
     )
     if ref:
         return ref.user
     user = User(name=command.name, timezone=command.timezone)
-    user.external_refs.append(ExternalRef(system=command.system, external_id=command.external_id))
+    user.external_refs.append(
+        ExternalRef(system=command.system, entity_type="user", external_id=command.external_id)
+    )
     session.add(user)
     await session.flush()
     return user
@@ -42,6 +45,7 @@ async def start_training(session: AsyncSession, user_id: str, command: TrainingC
     training = TrainingSession(
         user_id=user_id,
         local_date=command.date,
+        timezone=user.timezone,
         environment=command.environment,
         notes=command.notes,
         attempts=[],
