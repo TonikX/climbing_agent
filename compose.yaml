@@ -20,6 +20,7 @@ services:
   api:
     build:
       context: ./backend
+      network: host
     restart: unless-stopped
     environment:
       APP_ENV: ${APP_ENV:-production}
@@ -44,6 +45,7 @@ services:
     build:
       context: .
       dockerfile: deploy/openclaw/Dockerfile
+      network: host
       args:
         OPENCLAW_IMAGE: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:2026.9.4}
     image: climbing-journal-openclaw:${OPENCLAW_VERSION:-2026.9.4}
@@ -79,6 +81,7 @@ services:
     security_opt: [no-new-privileges:true]
     command: ["node", "dist/index.js", "gateway", "--bind", "lan", "--port", "18789"]
     networks: [backend, egress]
+    dns: [8.8.8.8, 1.1.1.1]
 
   openclaw-cli:
     image: climbing-journal-openclaw:${OPENCLAW_VERSION:-2026.9.4}
