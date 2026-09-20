@@ -231,3 +231,8 @@ data/
 backups/
 coverage/
 *.log
+runtime/
+deploy/tls/*.pem
+backend/.venv/
+backend/**/__pycache__/
+backend/.pytest_cache/

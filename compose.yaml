@@ -1,0 +1,131 @@
+name: climbing-journal
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-climbing_journal}
+      POSTGRES_USER: ${POSTGRES_USER:-climbing}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-climbing_journal}
+      DB_USER: ${POSTGRES_USER:-climbing}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [backend]
+
+  openclaw-gateway:
+    build:
+      context: .
+      dockerfile: deploy/openclaw/Dockerfile
+      args:
+        OPENCLAW_IMAGE: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:2026.9.4}
+    image: climbing-journal-openclaw:${OPENCLAW_VERSION:-2026.9.4}
+    restart: unless-stopped
+    init: true
+    environment:
+      HOME: /home/node
+      OPENCLAW_HOME: /home/node
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+      OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+      OPENCLAW_GATEWAY_PORT: "18789"
+      OPENCLAW_GATEWAY_BIND: lan
+      OPENCLAW_DISABLE_BONJOUR: "1"
+      CLIMBING_API_URL: http://api:8000
+      CLIMBING_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
+      CLIMBING_JOURNAL_DATA_DIR: /home/node/.openclaw/workspace/data
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in .env}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?Set OPENCLAW_GATEWAY_TOKEN in .env}
+      TZ: ${TZ:-Europe/Moscow}
+    volumes:
+      - ${OPENCLAW_CONFIG_HOST_DIR:-./runtime/openclaw/config}:/home/node/.openclaw
+      - ${OPENCLAW_WORKSPACE_HOST_DIR:-./runtime/openclaw/workspace}:/home/node/.openclaw/workspace
+      - ${OPENCLAW_AUTH_SECRET_HOST_DIR:-./runtime/openclaw/auth-secrets}:/home/node/.config/openclaw
+    ports:
+      - "127.0.0.1:${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+    depends_on:
+      api:
+        condition: service_healthy
+    cap_drop: [NET_RAW, NET_ADMIN]
+    security_opt: [no-new-privileges:true]
+    command: ["node", "dist/index.js", "gateway", "--bind", "lan", "--port", "18789"]
+    networks: [backend, egress]
+
+  openclaw-cli:
+    image: climbing-journal-openclaw:${OPENCLAW_VERSION:-2026.9.4}
+    profiles: [tools]
+    network_mode: service:openclaw-gateway
+    environment:
+      HOME: /home/node
+      OPENCLAW_HOME: /home/node
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+      OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+      OPENCLAW_GATEWAY_PORT: "18789"
+      CLIMBING_API_URL: http://api:8000
+      CLIMBING_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in .env}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?Set OPENCLAW_GATEWAY_TOKEN in .env}
+      BROWSER: echo
+      TZ: ${TZ:-Europe/Moscow}
+    volumes:
+      - ${OPENCLAW_CONFIG_HOST_DIR:-./runtime/openclaw/config}:/home/node/.openclaw
+      - ${OPENCLAW_WORKSPACE_HOST_DIR:-./runtime/openclaw/workspace}:/home/node/.openclaw/workspace
+      - ${OPENCLAW_AUTH_SECRET_HOST_DIR:-./runtime/openclaw/auth-secrets}:/home/node/.config/openclaw
+    entrypoint: ["node", "dist/index.js"]
+
+  nginx:
+    image: ${NGINX_IMAGE:-nginx:1.28-alpine}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${TLS_CERT_PATH:-./deploy/tls/fullchain.pem}:/etc/nginx/tls/fullchain.pem:ro
+      - ${TLS_KEY_PATH:-./deploy/tls/privkey.pem}:/etc/nginx/tls/privkey.pem:ro
+      - ${CERTBOT_WEBROOT_HOST_DIR:-./runtime/certbot}:/var/www/certbot:ro
+    networks: [frontend, backend]
+
+volumes:
+  postgres_data:
+
+networks:
+  frontend:
+  backend:
+    internal: true
+  egress:

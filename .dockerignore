@@ -1,0 +1,10 @@
+.git
+.github
+.env
+node_modules
+dist
+runtime
+server-baseline
+backend
+deploy/tls/*.pem
+*.log

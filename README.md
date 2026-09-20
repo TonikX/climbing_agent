@@ -1,7 +1,21 @@
 # Climbing Journal
 
-Персональный журнал скалолазных тренировок. Сейчас — OpenClaw/Telegram и JSON;
-следующий этап — общий backend API для Telegram и мобильного приложения.
+Персональный журнал скалолазных тренировок: OpenClaw/Telegram, FastAPI,
+PostgreSQL и HTTPS через Nginx.
+
+## Docker Compose
+
+```text
+Internet → Nginx → FastAPI → PostgreSQL
+Telegram ↔ OpenClaw ────────────┘
+```
+
+Для серверного запуска скопируйте `.env.example` в `.env`, заполните секреты и
+пути TLS, затем выполните `./scripts/deploy.sh`. Полная инструкция, перенос
+существующего OpenClaw и backup описаны в
+[`docs/docker-deployment.md`](docs/docker-deployment.md).
+
+FastAPI MVP и примеры запросов: [`docs/api.md`](docs/api.md).
 
 ## Разработка
 
@@ -26,6 +40,9 @@ npm run plugin:validate
 - `src/domain/merge-attempts.ts` — правила сопоставления сводки и событий.
 - `src/storage/store.ts` — граница хранилища текущего JSON MVP.
 - `src/storage/json-store.ts` — блокировка, чтение и запись JSON.
+- `backend/` — FastAPI, SQLAlchemy и Alembic для PostgreSQL.
+- `compose.yaml` — OpenClaw, API, PostgreSQL и Nginx.
+- `deploy/` — образы OpenClaw и конфигурация Nginx.
 - `skills/climbing-journal/SKILL.md` — инструкции агенту; исходник хранится в Git.
 - `docs/api-plan.md` — целевая архитектура и порядок разработки API.
 - `docs/deployment.md` — воспроизводимое развёртывание из Git.
@@ -42,5 +59,6 @@ npm run plugin:validate
 Для отдельного окружения задайте `CLIMBING_JOURNAL_DATA_DIR`.
 Рабочие JSON, секреты, зависимости, резервные копии и сборка не хранятся в Git.
 
-Перенос модулей не меняет форматы данных, IDs, восемь инструментов или правила
-логирования. HTTP API и миграция в PostgreSQL в этом изменении ещё не реализованы.
+API уже поддерживает базовый жизненный цикл active training. TypeScript-плагин
+пока сохраняет production-совместимое JSON-поведение; автоматической миграции
+старых данных и скрытого переключения бота на неполный API нет.
