@@ -32,6 +32,11 @@ OpenClaw и существующий TypeScript-плагин включены в
 - закрытые извне PostgreSQL 5432 и OpenClaw 18789;
 - действующий TLS-сертификат.
 
+Если на хосте уже работает Nginx, задайте для Compose другой HTTP bind, например
+`NGINX_HTTP_HOST=127.0.0.1` и `NGINX_HTTP_PORT=18080`. HTTPS-порт можно оставить
+443, если он свободен. Системный Nginx при этом обслуживает ACME challenge и
+перенаправляет домен на HTTPS.
+
 ## Первый запуск
 
 Клонировать нужную ветку в `/srv/climbing-journal/app`, затем:
