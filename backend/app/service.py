@@ -158,7 +158,7 @@ async def sync_journal_snapshot(session: AsyncSession, snapshot: JournalSnapshot
             "completed_at": _datetime(raw.get("completedAt")),
         }
         if item is None:
-            item = TrainingSession(id=str(training_id), **values)
+            item = TrainingSession(id=str(training_id), sections=[], gear=[], attempts=[], **values)
             session.add(item)
         else:
             for key, value in values.items():
