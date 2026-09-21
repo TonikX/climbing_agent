@@ -16,6 +16,20 @@ fi
 
 docker cp "$data_dir/." "$container_id:/tmp/journal-data"
 docker compose exec -T --user root api chmod -R a+rX /tmp/journal-data
+
+attempt=0
+until docker compose exec -T api python -c '
+import urllib.request
+urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=2).read()
+' >/dev/null 2>&1; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 30 ]; then
+    echo "API did not become ready in 30 seconds" >&2
+    exit 1
+  fi
+  sleep 1
+done
+
 docker compose exec -T api python -c '
 import json
 import os
