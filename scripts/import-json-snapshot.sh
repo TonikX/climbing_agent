@@ -15,6 +15,7 @@ if [ -z "$container_id" ]; then
 fi
 
 docker cp "$data_dir/." "$container_id:/tmp/journal-data"
+docker compose exec -T --user root api chmod -R a+rX /tmp/journal-data
 docker compose exec -T api python -c '
 import json
 import os
