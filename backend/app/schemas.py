@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -71,3 +71,23 @@ class TrainingResponse(BaseModel):
     created_at: datetime
     completed_at: datetime | None
     attempts: list[AttemptResponse] = Field(default_factory=list)
+
+
+class JournalSnapshot(BaseModel):
+    users: list[dict[str, Any]] = Field(default_factory=list)
+    areas: list[dict[str, Any]] = Field(default_factory=list)
+    sectors: list[dict[str, Any]] = Field(default_factory=list)
+    routes: list[dict[str, Any]] = Field(default_factory=list)
+    gear: list[dict[str, Any]] = Field(default_factory=list)
+    trainings: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class JournalSyncResponse(BaseModel):
+    users: int
+    locations: int
+    sections: int
+    routes: int
+    gear: int
+    trainings: int
+    attempts: int
+    skipped_training_ids: list[str] = Field(default_factory=list)
