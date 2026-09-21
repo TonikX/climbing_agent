@@ -17,7 +17,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    networks: [backend]
+    networks: [backend, admin]
 
   api:
     build:
@@ -134,3 +134,4 @@ networks:
   backend:
     internal: true
   egress:
+  admin:
