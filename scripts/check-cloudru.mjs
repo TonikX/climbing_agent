@@ -4,9 +4,18 @@ const model = "deepseek-ai/DeepSeek-V4-Flash";
 
 if (!apiKey) throw new Error("CLOUDRU_API_KEY is not set");
 
+async function responseBody(response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
 const headers = { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" };
 const modelsResponse = await fetch(`${baseUrl}/models`, { headers });
-const modelsBody = await modelsResponse.json();
+const modelsBody = await responseBody(modelsResponse);
 console.log(JSON.stringify({
   modelsStatus: modelsResponse.status,
   modelAvailable: Array.isArray(modelsBody.data) && modelsBody.data.some((item) => item.id === model),
@@ -25,11 +34,11 @@ const completionResponse = await fetch(`${baseUrl}/chat/completions`, {
     stream: false,
   }),
 });
-const completionBody = await completionResponse.json();
+const completionBody = await responseBody(completionResponse);
 console.log(JSON.stringify({
   completionStatus: completionResponse.status,
-  model: completionBody.model,
-  answer: completionBody.choices?.[0]?.message?.content,
+  model: typeof completionBody === "object" ? completionBody.model : undefined,
+  answer: typeof completionBody === "object" ? completionBody.choices?.[0]?.message?.content : undefined,
   error: completionResponse.ok ? undefined : completionBody,
 }));
 
