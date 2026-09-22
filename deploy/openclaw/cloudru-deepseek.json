@@ -1,0 +1,43 @@
+{
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "cloudru": {
+        "baseUrl": "https://foundation-models.api.cloud.ru/v1",
+        "apiKey": {
+          "source": "env",
+          "provider": "default",
+          "id": "CLOUDRU_API_KEY"
+        },
+        "api": "openai-completions",
+        "authHeader": true,
+        "models": [
+          {
+            "id": "deepseek-ai/DeepSeek-V4-Flash",
+            "name": "DeepSeek V4 Flash (Cloud.ru)",
+            "reasoning": true,
+            "input": ["text"],
+            "contextWindow": 1048576
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "models": {
+        "cloudru/deepseek-ai/DeepSeek-V4-Flash": {
+          "alias": "DeepSeek V4 Flash"
+        }
+      },
+      "model": {
+        "primary": "cloudru/deepseek-ai/DeepSeek-V4-Flash",
+        "fallbacks": ["openrouter/auto"]
+      },
+      "heartbeat": {
+        "model": "cloudru/deepseek-ai/DeepSeek-V4-Flash",
+        "isolatedSession": true
+      }
+    }
+  }
+}

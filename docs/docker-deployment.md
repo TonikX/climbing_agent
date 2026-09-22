@@ -141,6 +141,19 @@ docker compose run --rm openclaw-cli plugins inspect climbing-journal --runtime 
 данные при этом остаются в локальной JSON-копии и попадут в БД при следующей
 успешной синхронизации.
 
+### DeepSeek V4 Flash через Cloud.ru
+
+Задайте `CLOUDRU_API_KEY` в `.env`, затем примените конфигурацию провайдера:
+
+```bash
+docker cp deploy/openclaw/cloudru-deepseek.json climbing-journal-openclaw-gateway-1:/tmp/cloudru-deepseek.json
+docker compose exec openclaw-gateway node dist/index.js config patch --file /tmp/cloudru-deepseek.json
+docker compose restart openclaw-gateway
+```
+
+Основной моделью и моделью heartbeat станет
+`cloudru/deepseek-ai/DeepSeek-V4-Flash`; `openrouter/auto` останется резервом.
+
 Swagger UI доступен по `/docs`. До появления пользовательской JWT-авторизации
 операции API защищены `X-API-Key`; операции тренировок также требуют внутренний
 `X-User-ID`. Этот ключ предназначен только для OpenClaw и не должен попадать в
