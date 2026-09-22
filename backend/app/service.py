@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from fastapi import HTTPException, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, with_loader_criteria
 
 from app.models import (
     ExternalRef, Gear, Location, Route, RouteAttempt, Section, TrainingSession,
@@ -184,7 +184,8 @@ async def sync_journal_snapshot(session: AsyncSession, snapshot: JournalSnapshot
                 attempts=attempt_raw.get("attempts") or 1,
                 result=attempt_raw.get("result") or "unknown", style=attempt_raw.get("style") or "unknown",
                 belay=attempt_raw.get("belay") or "unknown", feel=attempt_raw.get("feel") or "unknown",
-                notes=attempt_raw.get("notes"), route_snapshot=attempt_raw.get("routeSnapshot") or {},
+                notes=attempt_raw.get("notes"), is_test=bool(attempt_raw.get("isTest", False)),
+                route_snapshot=attempt_raw.get("routeSnapshot") or {},
             ))
             counts["attempts"] += 1
         counts["trainings"] += 1
@@ -238,10 +239,16 @@ async def start_training(session: AsyncSession, user_id: str, command: TrainingC
     return training
 
 
-async def list_trainings(session: AsyncSession, user_id: str) -> list[TrainingSession]:
+async def list_trainings(
+    session: AsyncSession, user_id: str, include_test: bool = False
+) -> list[TrainingSession]:
+    query = select(TrainingSession).options(selectinload(TrainingSession.attempts))
+    if not include_test:
+        query = query.options(
+            with_loader_criteria(RouteAttempt, RouteAttempt.is_test.is_(False), include_aliases=True)
+        )
     return list((await session.scalars(
-        select(TrainingSession)
-        .options(selectinload(TrainingSession.attempts))
+        query
         .where(TrainingSession.user_id == user_id)
         .order_by(TrainingSession.local_date.desc(), TrainingSession.created_at.desc())
     )).all())
@@ -273,6 +280,7 @@ async def append_attempt(
         belay=command.belay,
         feel=command.feel,
         notes=command.notes,
+        is_test=command.is_test,
         route_snapshot={"name": command.name, "grade": command.grade, "sectionId": command.section_id},
     )
     training.version += 1

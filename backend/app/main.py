@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,8 +51,15 @@ async def start_training_endpoint(command: TrainingCreate, session: Session, use
 
 
 @app.get("/api/v1/trainings", response_model=list[TrainingResponse])
-async def list_trainings_endpoint(session: Session, user_id: CurrentUser) -> list[TrainingResponse]:
-    return [TrainingResponse.model_validate(item) for item in await list_trainings(session, user_id)]
+async def list_trainings_endpoint(
+    session: Session,
+    user_id: CurrentUser,
+    include_test: bool = Query(default=False),
+) -> list[TrainingResponse]:
+    return [
+        TrainingResponse.model_validate(item)
+        for item in await list_trainings(session, user_id, include_test=include_test)
+    ]
 
 
 @app.post("/api/v1/trainings/{training_id}/attempts", response_model=AttemptResponse, status_code=201)

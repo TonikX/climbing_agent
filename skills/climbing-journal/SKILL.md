@@ -77,6 +77,17 @@ An individual message represents a newly reported climbing event.
 Do not automatically deduplicate individual attempt messages because the user
 may genuinely climb the same route more than once.
 
+### Test attempts
+
+If the user's message starts with the word `тест` (case-insensitive, after
+leading whitespace), set `isTest=true` on every route attempt derived from that
+message. The remaining text is interpreted normally.
+
+Test attempts verify the bot and must not contribute to progress, volume,
+grade, route, or other climbing statistics. `get_climbing_trainings` excludes
+them by default. Never set `includeTest=true` when answering a statistics
+request. Use it only when the user explicitly asks to inspect test records.
+
 ### Updating training metadata
 
 Use:

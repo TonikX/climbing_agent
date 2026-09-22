@@ -35,6 +35,7 @@ class AttemptCreate(BaseModel):
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] = "unknown"
     feel: Literal["easy", "comfortable", "limit", "unknown"] = "unknown"
     notes: str | None = None
+    is_test: bool = False
 
 
 class FinishTraining(BaseModel):
@@ -53,6 +54,7 @@ class AttemptResponse(BaseModel):
     belay: str
     feel: str
     notes: str | None
+    is_test: bool
     route_snapshot: dict
 
 

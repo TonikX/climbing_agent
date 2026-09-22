@@ -46,8 +46,12 @@ POST /api/v1/trainings/training_.../attempts
 X-API-Key: ...
 X-User-ID: user_...
 
-{"grade":"6A","attempts":1,"result":"send","style":"unknown","belay":"lead"}
+{"grade":"6A","attempts":1,"result":"send","style":"unknown","belay":"lead","is_test":false}
 ```
+
+Для проверки бота передайте `is_test: true`. `GET /api/v1/trainings` по
+умолчанию не возвращает такие пролазы; диагностический просмотр доступен с
+`?include_test=true`.
 
 Завершить тренировку:
 

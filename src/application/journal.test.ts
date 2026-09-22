@@ -36,3 +36,24 @@ it("keeps separately configured service instances isolated", async () => {
   expect((await second.get_climbing_trainings.execute({})).count).toBe(0);
   expect((await first.get_climbing_trainings.execute({})).count).toBe(1);
 });
+
+it("stores test attempts but excludes them from normal history", async () => {
+  const service = journal();
+  const user = { name: "Test marker user" };
+  const date = "2026-09-22";
+  await service.append_climbing_attempt.execute({
+    user,
+    date,
+    attempt: { name: "Test route", grade: "6B", result: "send", isTest: true },
+  });
+
+  const normal = await service.get_climbing_trainings.execute({ userName: user.name });
+  expect(normal.trainings[0].routes).toEqual([]);
+
+  const diagnostic = await service.get_climbing_trainings.execute({
+    userName: user.name,
+    includeTest: true,
+  });
+  expect(diagnostic.trainings[0].routes).toHaveLength(1);
+  expect(diagnostic.trainings[0].routes[0].isTest).toBe(true);
+});

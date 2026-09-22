@@ -4,6 +4,7 @@ FROM node:24-bookworm-slim AS plugin-builder
 WORKDIR /plugin
 COPY package.json package-lock.json tsconfig.json openclaw.plugin.json ./
 COPY src ./src
+COPY skills ./skills
 RUN npm ci --no-audit --no-fund && npm run build
 
 FROM ${OPENCLAW_IMAGE}

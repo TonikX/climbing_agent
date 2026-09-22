@@ -175,6 +175,7 @@ class RouteAttempt(Base):
     belay: Mapped[str] = mapped_column(String(20), default="unknown")
     feel: Mapped[str] = mapped_column(String(20), default="unknown")
     notes: Mapped[str | None] = mapped_column(Text)
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     route_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     training: Mapped[TrainingSession] = relationship(back_populates="attempts")

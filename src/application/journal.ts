@@ -197,6 +197,13 @@ const RouteAttemptSchema = Type.Object(
     ),
 
     notes: Type.Optional(Type.String()),
+
+    isTest: Type.Optional(
+      Type.Boolean({
+        description:
+          "True when the attempt was created only to test the bot and must be excluded from statistics.",
+      }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -618,6 +625,9 @@ function resolveAttempt(
 
     notes:
       attempt.notes,
+
+    isTest:
+      attempt.isTest,
   };
 }
 
@@ -1892,6 +1902,14 @@ function resolveAttempt(
                 maximum: 500,
               }),
             ),
+
+          includeTest:
+            Type.Optional(
+              Type.Boolean({
+                description:
+                  "Include bot-test attempts. Leave false for history and statistics unless the user explicitly asks for test records.",
+              }),
+            ),
         },
         {
           additionalProperties: false,
@@ -1941,6 +1959,13 @@ function resolveAttempt(
         trainings =
           trainings.filter(
             (training) => {
+              const visibleAttempts =
+                (training.routes ?? []).filter(
+                  (attempt: JsonObject) =>
+                    query.includeTest ||
+                    attempt.isTest !== true,
+                );
+
               if (
                 userId &&
                 training.userId !==
@@ -2004,8 +2029,7 @@ function resolveAttempt(
               ) {
                 const routeMatch =
                   (
-                    training.routes ??
-                    []
+                    visibleAttempts
                   ).some(
                     (
                       attempt: JsonObject,
@@ -2142,7 +2166,13 @@ function resolveAttempt(
                 (
                   training.routes ??
                   []
-                ).map(
+                )
+                  .filter(
+                    (attempt: JsonObject) =>
+                      query.includeTest ||
+                      attempt.isTest !== true,
+                  )
+                  .map(
                   (
                     attempt: JsonObject,
                   ) => {

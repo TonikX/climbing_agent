@@ -67,6 +67,10 @@ function mergeAttempt(
     notes:
       incoming.notes ??
       existing.notes,
+
+    isTest:
+      incoming.isTest ??
+      existing.isTest,
   };
 }
 

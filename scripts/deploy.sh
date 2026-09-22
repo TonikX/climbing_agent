@@ -15,6 +15,15 @@ chmod 700 runtime/openclaw/config runtime/openclaw/auth-secrets
 docker compose config --quiet
 docker compose build api openclaw-gateway
 docker compose up -d
+docker compose exec -T openclaw-gateway sh -c '
+  mkdir -p /home/node/.openclaw/workspace/skills/climbing-journal \
+    /home/node/.openclaw/agents/main/agent/workshop-skills/climbing-journal
+  cp /opt/climbing-journal/skills/climbing-journal/SKILL.md \
+    /home/node/.openclaw/workspace/skills/climbing-journal/SKILL.md
+  cp /opt/climbing-journal/skills/climbing-journal/SKILL.md \
+    /home/node/.openclaw/agents/main/agent/workshop-skills/climbing-journal/SKILL.md
+'
+docker compose restart openclaw-gateway
 docker compose ps
 
 echo "API health: https://<your-domain>/health"

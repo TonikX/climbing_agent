@@ -78,7 +78,9 @@ validation — 400, unauthenticated — 401, отсутствующий/чужо
   duration, physical state, notes, user-reported weather и version.
 - `training_sections`, `training_gear`: связи с секторами и снаряжением.
 - `route_attempts`: собственный ID, training_id, nullable route_id, snapshot,
-  attempts, result, style, belay, feel, notes и порядок событий.
+  attempts, result, style, belay, feel, notes, `is_test` и порядок событий.
+  Тестовые события хранятся для диагностики, но по умолчанию исключаются из
+  истории и статистики.
 - `idempotency_keys`: владелец, операция, ключ, hash запроса и сохранённый ответ.
 
 Существующие `prefix_UUID` IDs сохраняются как text keys при первой миграции.
