@@ -47,5 +47,22 @@
         "isolatedSession": true
       }
     }
+  },
+  "tools": {
+    "media": {
+      "models": [
+        {
+          "type": "provider",
+          "provider": "openai",
+          "model": "openai/whisper-large-v3",
+          "profile": "openai:cloudru-audio",
+          "baseUrl": "https://foundation-models.api.cloud.ru/v1",
+          "capabilities": ["audio"]
+        }
+      ],
+      "audio": {
+        "enabled": true
+      }
+    }
   }
 }
