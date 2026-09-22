@@ -155,18 +155,10 @@ docker compose restart openclaw-gateway
 `cloudru/deepseek-ai/DeepSeek-V4-Flash`; `openrouter/auto` останется резервом.
 
 Для голосовых сообщений используется отдельная Audio-to-Text модель
-`openai/whisper-large-v3` через Cloud.ru. Один раз создайте для неё отдельный
-OpenAI-совместимый профиль, передав уже заданный `CLOUDRU_API_KEY` через stdin:
-
-```bash
-docker compose run --rm --entrypoint sh openclaw-cli -lc \
-  'printf "%s\n" "$CLOUDRU_API_KEY" | node dist/index.js models auth paste-api-key \
-    --agent main --provider openai --profile-id openai:cloudru-audio'
-```
-
-Профиль используется только моделью транскрибации; текстовые ответы продолжает
-генерировать DeepSeek V4 Flash. После применения конфигурации перезапустите
-Gateway и проверьте голосовое сообщение в Telegram.
+`openai/whisper-large-v3` через OpenAI-совместимый endpoint Cloud.ru. Для
+транскрибации OpenClaw берёт `CLOUDRU_API_KEY` из окружения. Текстовые ответы
+продолжает генерировать DeepSeek V4 Flash. После применения конфигурации
+перезапустите Gateway и проверьте голосовое сообщение в Telegram.
 
 Swagger UI доступен по `/docs`. До появления пользовательской JWT-авторизации
 операции API защищены `X-API-Key`; операции тренировок также требуют внутренний

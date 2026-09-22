@@ -2,6 +2,13 @@
   "models": {
     "mode": "merge",
     "providers": {
+      "openai": {
+        "apiKey": {
+          "source": "env",
+          "provider": "default",
+          "id": "CLOUDRU_API_KEY"
+        }
+      },
       "cloudru": {
         "baseUrl": "https://foundation-models.api.cloud.ru/v1",
         "apiKey": {
@@ -55,7 +62,6 @@
           "type": "provider",
           "provider": "openai",
           "model": "openai/whisper-large-v3",
-          "profile": "openai:cloudru-audio",
           "baseUrl": "https://foundation-models.api.cloud.ru/v1",
           "capabilities": ["audio"]
         }
