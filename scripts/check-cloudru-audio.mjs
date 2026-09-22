@@ -1,3 +1,5 @@
+import { writeFileSync } from "node:fs";
+
 const baseUrl = "https://foundation-models.api.cloud.ru/v1";
 const apiKey = process.env.CLOUDRU_API_KEY;
 const model = "openai/whisper-large-v3";
@@ -48,9 +50,12 @@ console.log(JSON.stringify({
 
 if (!modelsResponse.ok || !modelInfo) process.exit(1);
 
+const wav = silentWav();
+if (process.env.TEST_AUDIO_OUTPUT) writeFileSync(process.env.TEST_AUDIO_OUTPUT, wav);
+
 const form = new FormData();
 form.append("model", model);
-form.append("file", new Blob([silentWav()], { type: "audio/wav" }), "silence.wav");
+form.append("file", new Blob([wav], { type: "audio/wav" }), "silence.wav");
 
 const transcriptionResponse = await fetch(`${baseUrl}/audio/transcriptions`, {
   method: "POST",
