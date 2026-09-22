@@ -50,6 +50,7 @@
         "fallbacks": ["openrouter/auto"]
       },
       "heartbeat": {
+        "every": "0m",
         "model": "cloudru/deepseek-ai/DeepSeek-V4-Flash",
         "isolatedSession": true
       }

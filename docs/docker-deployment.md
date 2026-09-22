@@ -153,6 +153,8 @@ docker compose restart openclaw-gateway
 
 Основной моделью и моделью heartbeat станет
 `cloudru/deepseek-ai/DeepSeek-V4-Flash`; `openrouter/auto` останется резервом.
+Периодический heartbeat отключён параметром `every: "0m"`, чтобы не выполнять
+фоновые обращения к модели без настроенной задачи.
 
 Для голосовых сообщений используется отдельная Audio-to-Text модель
 `openai/whisper-large-v3` через OpenAI-совместимый endpoint Cloud.ru. Для
