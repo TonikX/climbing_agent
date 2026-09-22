@@ -30,6 +30,14 @@
           "alias": "DeepSeek V4 Flash"
         }
       },
+      "modelPolicy": {
+        "allow": [
+          "openai/gpt-5.4-mini",
+          "openai/gpt-5.4",
+          "openrouter/auto",
+          "cloudru/deepseek-ai/DeepSeek-V4-Flash"
+        ]
+      },
       "model": {
         "primary": "cloudru/deepseek-ai/DeepSeek-V4-Flash",
         "fallbacks": ["openrouter/auto"]
