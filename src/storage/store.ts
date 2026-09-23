@@ -6,8 +6,8 @@ export const collections = {
 } as const;
 export type Collection = typeof collections[keyof typeof collections];
 
-// Synchronous unit of work for the current JSON MVP. This is deliberately not a
-// SQL repository contract; async repositories and typed entities precede SQL.
+// Contract used by the schema/domain module. Production execution is delegated
+// to FastAPI and PostgreSQL by src/storage/api-client.ts.
 export interface JournalStore {
   transaction<T>(operation: () => T): T;
   read(collection: Collection): JsonObject[];

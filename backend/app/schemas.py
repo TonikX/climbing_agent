@@ -75,21 +75,5 @@ class TrainingResponse(BaseModel):
     attempts: list[AttemptResponse] = Field(default_factory=list)
 
 
-class JournalSnapshot(BaseModel):
-    users: list[dict[str, Any]] = Field(default_factory=list)
-    areas: list[dict[str, Any]] = Field(default_factory=list)
-    sectors: list[dict[str, Any]] = Field(default_factory=list)
-    routes: list[dict[str, Any]] = Field(default_factory=list)
-    gear: list[dict[str, Any]] = Field(default_factory=list)
-    trainings: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class JournalSyncResponse(BaseModel):
-    users: int
-    locations: int
-    sections: int
-    routes: int
-    gear: int
-    trainings: int
-    attempts: int
-    skipped_training_ids: list[str] = Field(default_factory=list)
+class ToolCommand(BaseModel):
+    payload: dict[str, Any]

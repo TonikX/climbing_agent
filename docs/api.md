@@ -63,5 +63,7 @@ X-User-ID: user_...
 {"duration_minutes":180,"notes":"Хорошая тренировка"}
 ```
 
-Полный контракт locations/sections/routes, gear, weather updates, summary merge,
-idempotency keys и мобильная JWT-авторизация остаются следующими API-задачами.
+Восемь инструментов OpenClaw вызывают внутренний endpoint
+`POST /api/v1/tools/{operation}` с `X-API-Key`. Их бизнес-логика выполняется в
+FastAPI, а изменения фиксируются одной транзакцией PostgreSQL. Публичный контракт
+для мобильного клиента и JWT-авторизация остаются следующими API-задачами.
