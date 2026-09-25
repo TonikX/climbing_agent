@@ -28,7 +28,7 @@ npm test && npm run plugin:build && npm run plugin:validate
 openclaw gateway restart && openclaw plugins inspect climbing-journal --runtime --json
 ```
 
-Ожидается `loaded`, восемь tools и отсутствие diagnostics. Сравнить контрольные
+Ожидается `loaded`, двенадцать tools и отсутствие ошибок. Сравнить контрольные
 суммы данных до/после при отсутствии пользовательских записей. Записать commit
 SHA релиза. Skill устанавливать из `skills/climbing-journal/SKILL.md` после
 сравнения с серверной копией.

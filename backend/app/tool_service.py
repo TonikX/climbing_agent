@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -33,6 +35,13 @@ def _date(value: Any) -> date:
         return date.fromisoformat(str(value))
     except ValueError as exc:
         raise _bad(f"Invalid date: {value}") from exc
+
+
+def _today(user: User) -> date:
+    try:
+        return datetime.now(ZoneInfo(user.timezone)).date()
+    except Exception:
+        return datetime.now(UTC).date()
 
 
 async def _add_refs(session: AsyncSession, entity_type: str, owner: Any, refs: Any) -> None:
@@ -163,13 +172,39 @@ async def _gear_ids(session: AsyncSession, user_id: str, ids: Any) -> list[Gear]
 
 async def _active(session: AsyncSession, user_id: str) -> TrainingSession | None:
     return await session.scalar(select(TrainingSession).options(
-        selectinload(TrainingSession.attempts), selectinload(TrainingSession.sections),
+        selectinload(TrainingSession.attempts).selectinload(RouteAttempt.route).selectinload(Route.section),
+        selectinload(TrainingSession.sections),
         selectinload(TrainingSession.gear)).where(
         TrainingSession.user_id == user_id, TrainingSession.status == "active").with_for_update())
 
 
+async def _last_attempt(session: AsyncSession, user_id: str, active_only: bool = False) -> RouteAttempt | None:
+    query = select(RouteAttempt).join(TrainingSession).options(
+        selectinload(RouteAttempt.route).selectinload(Route.section)).where(
+        TrainingSession.user_id == user_id)
+    if active_only:
+        query = query.where(TrainingSession.status == "active")
+    return await session.scalar(query.order_by(RouteAttempt.created_at.desc(), RouteAttempt.sequence.desc()).limit(1))
+
+
 async def _attempt(session: AsyncSession, training: TrainingSession, area: Location | None,
                    default_section: Section | None, raw: dict[str, Any]) -> RouteAttempt:
+    previous = await _last_attempt(session, training.user_id, active_only=True)
+    continuing = bool(raw.get("continueCurrentRoute"))
+    if continuing and not previous:
+        raise _bad("There is no current route to continue", 409)
+    if continuing and previous:
+        if raw.get("routeId") or raw.get("name") or raw.get("sector"):
+            raise _bad("continueCurrentRoute cannot be combined with another route", 409)
+        raw = {**raw, "routeId": previous.route_id,
+               "name": (previous.route_snapshot or {}).get("name"),
+               "grade": (previous.route_snapshot or {}).get("grade")}
+        if previous.route:
+            default_section = previous.route.section
+        elif (previous.route_snapshot or {}).get("sectorId"):
+            default_section = await session.get(Section, previous.route_snapshot["sectorId"])
+        if default_section:
+            area = await session.get(Location, default_section.location_id)
     section = await _section(session, area, raw.get("sector")) if raw.get("sector") else default_section
     route = await _route(session, section, raw)
     if route and not section:
@@ -180,11 +215,29 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
         raise _bad("Route does not belong to the selected area")
     sequence = int(await session.scalar(select(func.coalesce(func.max(RouteAttempt.sequence), 0)).where(
         RouteAttempt.training_id == training.id))) + 1
+    same_as_previous = bool(previous and (
+        (route and previous.route_id == route.id) or
+        (not route and _norm((previous.route_snapshot or {}).get("name")) == _norm(raw.get("name")) and
+         _norm((previous.route_snapshot or {}).get("grade")) == _norm(raw.get("grade")))))
+    route_session_key = (previous.route_session_key if previous and (continuing or same_as_previous) else None) \
+        or f"route_session_{uuid4()}"
+    attempt_number = int(await session.scalar(select(func.count(RouteAttempt.id)).where(
+        RouteAttempt.training_id == training.id,
+        RouteAttempt.route_session_key == route_session_key))) + 1
+    result = str(raw.get("result") or "unknown")
+    falls = raw.get("falls")
+    if falls is not None and int(falls) > 0 and result == "send":
+        result = "project"
+    style = str(raw.get("style") or "unknown")
+    if result == "send" and attempt_number > 1 and style == "unknown":
+        style = "redpoint"
     item = RouteAttempt(
         training_id=training.id, route_id=route.id if route else None, sequence=sequence,
-        attempts=int(raw.get("attempts") or 1), result=str(raw.get("result") or "unknown"),
-        style=str(raw.get("style") or "unknown"), belay=str(raw.get("belay") or "unknown"),
+        route_session_key=route_session_key, attempt_number=attempt_number,
+        attempts=int(raw.get("attempts") or 1), result=result,
+        style=style, belay=str(raw.get("belay") or "unknown"),
         feel=str(raw.get("feel") or "unknown"), notes=raw.get("notes"),
+        high_point=raw.get("highPoint"), total_moves=raw.get("totalMoves"), falls=falls,
         is_test=bool(raw.get("isTest", False)),
         route_snapshot={"name": raw.get("name") or (route.name if route else None),
                         "grade": raw.get("grade") or (route.grade if route else None),
@@ -199,8 +252,10 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
 
 
 def _attempt_dict(item: RouteAttempt, route: Route | None = None, section: Section | None = None) -> dict[str, Any]:
-    return {"routeId": item.route_id, "routeSnapshot": item.route_snapshot, "belay": item.belay,
+    return {"id": item.id, "number": item.attempt_number, "routeId": item.route_id,
+            "routeSessionKey": item.route_session_key, "routeSnapshot": item.route_snapshot, "belay": item.belay,
             "attempts": item.attempts, "result": item.result, "style": item.style, "feel": item.feel,
+            "highPoint": item.high_point, "totalMoves": item.total_moves, "falls": item.falls,
             "notes": item.notes, "isTest": item.is_test, "route": _route_dict(route) if route else None,
             "sector": _section_dict(section) if section else None}
 
@@ -233,7 +288,7 @@ async def _start(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
         current.status, current.completed_at = "completed", datetime.now(UTC)
     area = await _area(session, p.get("area"))
     section = await _section(session, area, p.get("sector"))
-    item = TrainingSession(user_id=user.id, status="active", local_date=_date(p["date"]),
+    item = TrainingSession(user_id=user.id, status="active", local_date=_date(p["date"]) if p.get("date") else _today(user),
                            started_at=_dt(p.get("startedAt")), timezone=user.timezone,
                            environment=p.get("environment") or "unknown", primary_location_id=area.id if area else None,
                            weather=p.get("weather"), notes=p.get("notes"), attempts=[],
@@ -245,8 +300,10 @@ async def _start(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
 
 async def _append(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     user = await _user(session, p["user"])
+    raw_attempt = p.get("attempt") or p
     training = await _active(session, user.id)
-    if training and training.local_date != _date(p["date"]):
+    local_date = _date(p["date"]) if p.get("date") else _today(user)
+    if training and training.local_date != local_date:
         raise _bad("Active training has a different date; finish it or explicitly start a new training", 409)
     area = await _area(session, p.get("area"))
     if not area and training and training.primary_location_id:
@@ -255,16 +312,27 @@ async def _append(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     if not section and training and training.sections:
         section = training.sections[-1]
     if not training:
-        training = TrainingSession(user_id=user.id, status="active", local_date=_date(p["date"]),
+        training = TrainingSession(user_id=user.id, status="active", local_date=local_date,
                                    timezone=user.timezone, environment="unknown",
                                    primary_location_id=area.id if area else None, attempts=[], sections=[], gear=[])
         session.add(training)
         await session.flush()
     if area and not training.primary_location_id:
         training.primary_location_id = area.id
-    await _attempt(session, training, area, section, p["attempt"])
-    count = await session.scalar(select(func.count(RouteAttempt.id)).where(RouteAttempt.training_id == training.id))
-    return {"success": True, "trainingId": training.id, "status": training.status, "loggedEvents": count}
+    item = await _attempt(session, training, area, section, raw_attempt)
+    previous_best = await session.scalar(select(func.max(RouteAttempt.high_point)).where(
+        RouteAttempt.route_session_key == item.route_session_key, RouteAttempt.id != item.id))
+    snapshot = item.route_snapshot or {}
+    return {
+        "attemptId": item.id,
+        "number": item.attempt_number,
+        "route": {"name": snapshot.get("name"), "grade": snapshot.get("grade")},
+        "result": {"completed": item.result == "send", "highPoint": item.high_point,
+                   "totalMoves": item.total_moves, "falls": item.falls},
+        "derived": {"isNewBest": item.high_point is not None and
+                    (previous_best is None or item.high_point > previous_best),
+                    "isProject": item.result == "project"},
+    }
 
 
 async def _save(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
@@ -334,6 +402,164 @@ async def _update(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     if p.get("notes"): training.notes = p["notes"]
     training.version += 1
     return {"success": True, "trainingId": training.id}
+
+
+async def _attempt_target(session: AsyncSession, user_id: str, p: dict[str, Any]) -> RouteAttempt:
+    if p.get("attemptId"):
+        item = await session.scalar(select(RouteAttempt).join(TrainingSession).where(
+            RouteAttempt.id == str(p["attemptId"]), TrainingSession.user_id == user_id).with_for_update())
+    elif p.get("useLastAttempt"):
+        item = await _last_attempt(session, user_id)
+    else:
+        raise _bad("attemptId or useLastAttempt=true is required")
+    if not item:
+        raise _bad("Climbing attempt not found", 404)
+    return item
+
+
+async def _update_attempt(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
+    user = await _user(session, p["user"])
+    item = await _attempt_target(session, user.id, p)
+    updated: dict[str, Any] = {}
+    mapping = {
+        "highPoint": "high_point", "totalMoves": "total_moves", "falls": "falls",
+        "result": "result", "style": "style", "feel": "feel", "notes": "notes",
+    }
+    for source, target in mapping.items():
+        if source in p:
+            setattr(item, target, p[source])
+            updated[source] = p[source]
+    if item.falls is not None and item.falls > 0 and item.result == "send":
+        item.result = "project"
+        updated["result"] = "project"
+    return {"success": True, "attemptId": item.id, "number": item.attempt_number, "updated": updated}
+
+
+async def _delete_attempt(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
+    user = await _user(session, p["user"])
+    item = await _attempt_target(session, user.id, p)
+    attempt_id, route_session_key = item.id, item.route_session_key
+    await session.delete(item)
+    await session.flush()
+    remaining = await session.scalar(select(func.count(RouteAttempt.id)).where(
+        RouteAttempt.route_session_key == route_session_key)) if route_session_key else 0
+    return {"success": True, "deletedAttemptId": attempt_id, "currentRouteAttempts": remaining}
+
+
+def _grade_rank(value: str | None) -> tuple[int, int, int]:
+    if not value:
+        return (-1, -1, -1)
+    grade = value.strip().upper()
+    digits = "".join(ch for ch in grade if ch.isdigit())
+    number = int(digits) if digits else -1
+    letter = next((ch for ch in grade if ch in "ABC"), "")
+    modifier = 1 if "+" in grade else 0
+    return (number, "ABC".find(letter), modifier)
+
+
+def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
+    sessions = {a.route_session_key or a.id for a in attempts}
+    completed = {a.route_session_key or a.id for a in attempts if a.result == "send"}
+    projects = {a.route_session_key or a.id for a in attempts if a.result == "project"} - completed
+    grades = [(a.route_snapshot or {}).get("grade") or (a.route.grade if a.route else None) for a in attempts]
+    max_grade = max((grade for grade in grades if grade), key=_grade_rank, default=None)
+    return {
+        "routesCount": len(sessions),
+        "attemptsCount": sum(a.attempts for a in attempts),
+        "completedRoutes": len(completed),
+        "activeProjects": len(projects),
+        "flashCount": sum(1 for a in attempts if a.style == "flash"),
+        "redpointCount": sum(1 for a in attempts if a.style == "redpoint"),
+        "maxGrade": max_grade,
+    }
+
+
+async def _get_current(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
+    user = await _user(session, p["user"])
+    training = await _active(session, user.id)
+    if not training:
+        return {"active": False}
+    area = await session.get(Location, training.primary_location_id) if training.primary_location_id else None
+    attempts = [a for a in training.attempts if not a.is_test]
+    response: dict[str, Any] = {
+        "active": True, "id": training.id, "status": training.status,
+        "location": {"name": area.name} if area else None,
+        "summary": _summary(attempts),
+    }
+    if p.get("detail", "summary") == "full":
+        route_groups: dict[str, dict[str, Any]] = {}
+        for attempt in sorted(attempts, key=lambda value: value.sequence):
+            key = attempt.route_session_key or attempt.id
+            snapshot = attempt.route_snapshot or {}
+            group = route_groups.setdefault(key, {
+                "route": {"name": snapshot.get("name"), "grade": snapshot.get("grade")},
+                "section": next(({"id": s.id, "name": s.name} for s in training.sections
+                                 if s.id == snapshot.get("sectorId")), None),
+                "attempts": [],
+            })
+            group["attempts"].append(_attempt_dict(attempt, attempt.route))
+        response["routes"] = list(route_groups.values())
+    return response
+
+
+async def _statistics_rows(session: AsyncSession, user_id: str, start: date | None,
+                           end: date | None) -> list[tuple[TrainingSession, RouteAttempt]]:
+    query = select(TrainingSession).options(
+        selectinload(TrainingSession.attempts).selectinload(RouteAttempt.route)).where(
+        TrainingSession.user_id == user_id)
+    if start: query = query.where(TrainingSession.local_date >= start)
+    if end: query = query.where(TrainingSession.local_date <= end)
+    trainings = list((await session.scalars(query)).unique().all())
+    return [(training, attempt) for training in trainings for attempt in training.attempts if not attempt.is_test]
+
+
+async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
+    user = await _user(session, p["user"])
+    today, scope = _today(user), p.get("scope", "week")
+    start: date | None = _date(p["dateFrom"]) if p.get("dateFrom") else None
+    end: date | None = _date(p["dateTo"]) if p.get("dateTo") else None
+    previous_start = previous_end = None
+    if scope == "week":
+        start, end = today - timedelta(days=today.weekday()), today
+        previous_start, previous_end = start - timedelta(days=7), start - timedelta(days=1)
+    elif scope == "month":
+        start, end = today.replace(day=1), today
+        previous_end = start - timedelta(days=1)
+        previous_start = previous_end.replace(day=1)
+    rows = await _statistics_rows(session, user.id, start, end)
+    route_name = _norm(p.get("route"))
+    if p.get("routeId") or route_name:
+        rows = [(t, a) for t, a in rows if
+                (p.get("routeId") and a.route_id == p["routeId"]) or
+                (route_name and route_name in _norm((a.route_snapshot or {}).get("name") or
+                                                    (a.route.name if a.route else None)))]
+    attempts = [attempt for _, attempt in rows]
+    result = {"scope": scope, "dateFrom": start.isoformat() if start else None,
+              "dateTo": end.isoformat() if end else None,
+              "trainingsCount": len({training.id for training, _ in rows}), **_summary(attempts)}
+    if previous_start and previous_end:
+        previous_rows = await _statistics_rows(session, user.id, previous_start, previous_end)
+        previous_attempts = [attempt for _, attempt in previous_rows]
+        previous_summary = _summary(previous_attempts)
+        result["previousPeriod"] = {
+            "trainingsCount": len({training.id for training, _ in previous_rows}),
+            "completedRoutes": previous_summary["completedRoutes"],
+            "attemptsCount": previous_summary["attemptsCount"],
+        }
+    if scope == "projects":
+        latest: dict[str, RouteAttempt] = {}
+        for attempt in attempts:
+            key = attempt.route_session_key or attempt.id
+            if key not in latest or attempt.sequence > latest[key].sequence:
+                latest[key] = attempt
+        limit = min(int(p.get("limit") or 10), 50)
+        result["projects"] = [
+            {"route": {"name": (a.route_snapshot or {}).get("name"),
+                       "grade": (a.route_snapshot or {}).get("grade")},
+             "highPoint": a.high_point, "totalMoves": a.total_moves, "falls": a.falls}
+            for a in latest.values() if a.result == "project"
+        ][:limit]
+    return result
 
 
 async def _finish(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
@@ -426,8 +652,10 @@ async def _get_trainings(session: AsyncSession, p: dict[str, Any]) -> dict[str, 
 HANDLERS = {
     "start_climbing_training": _start, "append_climbing_attempt": _append,
     "save_climbing_training": _save, "update_climbing_training": _update,
+    "update_climbing_attempt": _update_attempt, "delete_climbing_attempt": _delete_attempt,
     "finish_climbing_training": _finish, "upsert_climbing_gear": _upsert_gear,
-    "find_climbing_routes": _find_routes, "get_climbing_trainings": _get_trainings,
+    "find_climbing_routes": _find_routes, "get_current_climbing_training": _get_current,
+    "get_climbing_trainings": _get_trainings, "get_climbing_statistics": _statistics,
 }
 
 

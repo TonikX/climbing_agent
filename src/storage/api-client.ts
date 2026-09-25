@@ -16,6 +16,7 @@ export function usePostgresApi<S extends TSchema>(operation: Operation<S>): Oper
       const apiKey = process.env.CLIMBING_API_KEY;
       if (!baseUrl || !apiKey) throw new Error("CLIMBING_API_URL and CLIMBING_API_KEY are required");
 
+      const startedAt = performance.now();
       const response = await fetch(`${baseUrl}/api/v1/tools/${operation.name}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
@@ -26,6 +27,11 @@ export function usePostgresApi<S extends TSchema>(operation: Operation<S>): Oper
         const detail = body && typeof body === "object" && "detail" in body ? body.detail : response.statusText;
         throw new Error(`Climbing API: ${String(detail)}`);
       }
+      console.info("[climbing-journal-metrics]", JSON.stringify({
+        tool: operation.name,
+        resultBytes: JSON.stringify(body).length,
+        latencyMs: Math.round(performance.now() - startedAt),
+      }));
       return body;
     },
   };

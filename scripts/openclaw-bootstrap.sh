@@ -30,7 +30,7 @@ docker compose run -T --rm --no-deps --entrypoint node openclaw-gateway \
 
 docker compose run -T --rm --no-deps --entrypoint node openclaw-gateway \
   dist/index.js config set tools.alsoAllow \
-  '["start_climbing_training","append_climbing_attempt","save_climbing_training","update_climbing_training","finish_climbing_training","upsert_climbing_gear","find_climbing_routes","get_climbing_trainings"]' \
+  '["start_climbing_training","append_climbing_attempt","update_climbing_attempt","delete_climbing_attempt","finish_climbing_training","get_current_climbing_training","get_climbing_statistics","save_climbing_training","update_climbing_training","upsert_climbing_gear","find_climbing_routes","get_climbing_trainings"]' \
   --strict-json
 
 docker compose run -T --rm --no-deps --entrypoint node openclaw-gateway \

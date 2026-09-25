@@ -69,5 +69,13 @@
         "enabled": true
       }
     }
+  },
+  "channels": {
+    "telegram": {
+      "dmHistoryLimit": 2
+    }
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
   }
 }

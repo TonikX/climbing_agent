@@ -164,11 +164,17 @@ class RouteAttempt(Base):
         CheckConstraint("belay IN ('lead', 'top_rope', 'auto_belay', 'bouldering', 'unknown')", name="ck_attempt_belay"),
         CheckConstraint("feel IN ('easy', 'comfortable', 'limit', 'unknown')", name="ck_attempt_feel"),
         CheckConstraint("attempts > 0", name="ck_attempt_count_positive"),
+        CheckConstraint("attempt_number IS NULL OR attempt_number > 0", name="ck_attempt_number_positive"),
+        CheckConstraint("high_point IS NULL OR high_point >= 0", name="ck_attempt_high_point_nonnegative"),
+        CheckConstraint("total_moves IS NULL OR total_moves > 0", name="ck_attempt_total_moves_positive"),
+        CheckConstraint("falls IS NULL OR falls >= 0", name="ck_attempt_falls_nonnegative"),
         UniqueConstraint("training_id", "sequence", name="uq_attempt_sequence"),
     )
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: new_id("attempt"))
     training_id: Mapped[str] = mapped_column(ForeignKey("training_sessions.id", ondelete="CASCADE"), index=True)
     route_id: Mapped[str | None] = mapped_column(ForeignKey("routes.id", ondelete="SET NULL"), index=True)
+    route_session_key: Mapped[str | None] = mapped_column(String, index=True)
+    attempt_number: Mapped[int | None] = mapped_column(Integer)
     sequence: Mapped[int] = mapped_column(Integer)
     attempts: Mapped[int] = mapped_column(Integer, default=1)
     result: Mapped[str] = mapped_column(String(20), default="unknown")
@@ -176,6 +182,9 @@ class RouteAttempt(Base):
     belay: Mapped[str] = mapped_column(String(20), default="unknown")
     feel: Mapped[str] = mapped_column(String(20), default="unknown")
     notes: Mapped[str | None] = mapped_column(Text)
+    high_point: Mapped[int | None] = mapped_column(Integer)
+    total_moves: Mapped[int | None] = mapped_column(Integer)
+    falls: Mapped[int | None] = mapped_column(Integer)
     is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     route_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))

@@ -5,6 +5,7 @@ WORKDIR /plugin
 COPY package.json package-lock.json tsconfig.json openclaw.plugin.json ./
 COPY src ./src
 COPY skills ./skills
+COPY deploy/openclaw/cloudru-deepseek.json ./deploy/openclaw/cloudru-deepseek.json
 RUN npm ci --no-audit --no-fund && npm run build
 
 FROM ${OPENCLAW_IMAGE}

@@ -34,8 +34,7 @@ npm run plugin:validate
 ## Структура
 
 - `src/index.ts` — адаптер OpenClaw и сборка зависимостей.
-- `src/application/journal.ts` — входные схемы восьми операций журнала.
-- `src/domain/merge-attempts.ts` — правила сопоставления сводки и событий.
+- `src/application/journal.ts` — компактные входные схемы инструментов журнала.
 - `src/storage/api-client.ts` — передача всех операций из OpenClaw в FastAPI.
 - `backend/` — FastAPI, SQLAlchemy и Alembic; начальная схема включает каталог
   locations/sections/routes, gear и журнал тренировок.
@@ -43,6 +42,8 @@ npm run plugin:validate
 - `deploy/` — образы OpenClaw и конфигурация Nginx.
 - `skills/climbing-journal/SKILL.md` — инструкции агенту; исходник хранится в Git.
 - `docs/api-plan.md` — целевая архитектура и порядок разработки API.
+- `docs/context-and-token-budget.md` — runtime context, лимиты и измерение токенов.
+- `docs/statistics.md` и `docs/voice-flow.md` — агрегаты и обработка voice.
 - `docs/deployment.md` — воспроизводимое развёртывание из Git.
 - `backend/app/tool_service.py` — транзакционная реализация инструментов бота.
 
@@ -50,6 +51,6 @@ npm run plugin:validate
 
 PostgreSQL — единственный источник данных журнала. OpenClaw не читает и не
 записывает локальные файлы с пользователями, тренировками, трассами или
-снаряжением: все восемь инструментов выполняются через FastAPI в транзакции БД.
+снаряжением: все двенадцать инструментов выполняются через FastAPI в транзакции БД.
 Перед развёртыванием делайте резервную копию PostgreSQL по инструкции из
 `docs/docker-deployment.md`.

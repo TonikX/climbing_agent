@@ -23,6 +23,8 @@ docker compose exec -T openclaw-gateway sh -c '
   cp /opt/climbing-journal/skills/climbing-journal/SKILL.md \
     /home/node/.openclaw/agents/main/agent/workshop-skills/climbing-journal/SKILL.md
 '
+docker compose exec -T openclaw-gateway node dist/index.js config patch \
+  --file /opt/climbing-journal/deploy/openclaw/cloudru-deepseek.json
 docker compose restart openclaw-gateway
 docker compose ps
 
