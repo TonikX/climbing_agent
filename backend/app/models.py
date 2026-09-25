@@ -42,6 +42,7 @@ class User(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: new_id("user"))
     name: Mapped[str] = mapped_column(String(200))
     timezone: Mapped[str] = mapped_column(String(100), default="Europe/Moscow")
+    test_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     external_refs: Mapped[list["ExternalRef"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     gear: Mapped[list["Gear"]] = relationship(back_populates="user", cascade="all, delete-orphan")

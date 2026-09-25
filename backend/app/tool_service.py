@@ -188,7 +188,7 @@ async def _last_attempt(session: AsyncSession, user_id: str, active_only: bool =
 
 
 async def _attempt(session: AsyncSession, training: TrainingSession, area: Location | None,
-                   default_section: Section | None, raw: dict[str, Any]) -> RouteAttempt:
+                   default_section: Section | None, raw: dict[str, Any], *, force_test: bool = False) -> RouteAttempt:
     previous = await _last_attempt(session, training.user_id, active_only=True)
     continuing = bool(raw.get("continueCurrentRoute"))
     if continuing and not previous:
@@ -238,7 +238,7 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
         style=style, belay=str(raw.get("belay") or "unknown"),
         feel=str(raw.get("feel") or "unknown"), notes=raw.get("notes"),
         high_point=raw.get("highPoint"), total_moves=raw.get("totalMoves"), falls=falls,
-        is_test=bool(raw.get("isTest", False)),
+        is_test=bool(raw.get("isTest", False) or force_test),
         route_snapshot={"name": raw.get("name") or (route.name if route else None),
                         "grade": raw.get("grade") or (route.grade if route else None),
                         "areaId": area.id if area else None, "sectorId": section.id if section else None},
@@ -319,7 +319,7 @@ async def _append(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
         await session.flush()
     if area and not training.primary_location_id:
         training.primary_location_id = area.id
-    item = await _attempt(session, training, area, section, raw_attempt)
+    item = await _attempt(session, training, area, section, raw_attempt, force_test=user.test_mode_enabled)
     previous_best = await session.scalar(select(func.max(RouteAttempt.high_point)).where(
         RouteAttempt.route_session_key == item.route_session_key, RouteAttempt.id != item.id))
     snapshot = item.route_snapshot or {}
@@ -332,6 +332,7 @@ async def _append(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
         "derived": {"isNewBest": item.high_point is not None and
                     (previous_best is None or item.high_point > previous_best),
                     "isProject": item.result == "project"},
+        "isTest": item.is_test,
     }
 
 
@@ -373,9 +374,10 @@ async def _save(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
             for source, target in (("attempts", "attempts"), ("result", "result"), ("style", "style"),
                                    ("belay", "belay"), ("feel", "feel"), ("notes", "notes")):
                 if raw.get(source) is not None: setattr(item, target, raw[source])
-            if "isTest" in raw: item.is_test = bool(raw["isTest"])
+            if "isTest" in raw or user.test_mode_enabled:
+                item.is_test = bool(raw.get("isTest", False) or user.test_mode_enabled)
         else:
-            await _attempt(session, training, area, section, raw)
+            await _attempt(session, training, area, section, raw, force_test=user.test_mode_enabled)
     await session.flush()
     count = await session.scalar(select(func.count(RouteAttempt.id)).where(RouteAttempt.training_id == training.id))
     return {"success": True, "merged": merged, "trainingId": training.id, "routeCount": count}
@@ -478,11 +480,12 @@ async def _get_current(session: AsyncSession, p: dict[str, Any]) -> dict[str, An
     user = await _user(session, p["user"])
     training = await _active(session, user.id)
     if not training:
-        return {"active": False}
+        return {"active": False, "testMode": user.test_mode_enabled}
     area = await session.get(Location, training.primary_location_id) if training.primary_location_id else None
     attempts = [a for a in training.attempts if not a.is_test]
     response: dict[str, Any] = {
         "active": True, "id": training.id, "status": training.status,
+        "testMode": user.test_mode_enabled,
         "location": {"name": area.name} if area else None,
         "summary": _summary(attempts),
     }
@@ -500,6 +503,13 @@ async def _get_current(session: AsyncSession, p: dict[str, Any]) -> dict[str, An
             group["attempts"].append(_attempt_dict(attempt, attempt.route))
         response["routes"] = list(route_groups.values())
     return response
+
+
+async def _set_test_mode(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
+    user = await _user(session, p["user"])
+    user.test_mode_enabled = bool(p["enabled"])
+    await session.flush()
+    return {"success": True, "enabled": user.test_mode_enabled}
 
 
 async def _statistics_rows(session: AsyncSession, user_id: str, start: date | None,
@@ -656,6 +666,7 @@ HANDLERS = {
     "finish_climbing_training": _finish, "upsert_climbing_gear": _upsert_gear,
     "find_climbing_routes": _find_routes, "get_current_climbing_training": _get_current,
     "get_climbing_trainings": _get_trainings, "get_climbing_statistics": _statistics,
+    "set_climbing_test_mode": _set_test_mode,
 }
 
 

@@ -63,6 +63,7 @@
       "finish_climbing_training",
       "get_current_climbing_training",
       "get_climbing_statistics",
+      "set_climbing_test_mode",
       "save_climbing_training",
       "update_climbing_training",
       "upsert_climbing_gear",

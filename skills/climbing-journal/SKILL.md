@@ -15,6 +15,7 @@ conversation history is not.
 - Current training → `get_current_climbing_training`; use `detail=summary` unless attempts were requested.
 - Statistics → `get_climbing_statistics`. Never calculate them from raw history.
 - A message starting with “тест” marks every derived attempt `isTest=true`.
+- `set_climbing_test_mode` persists manual test mode. While enabled, every new attempt is test data.
 - Never invent user, location, section, route, gear, external ID, or weather data.
 - Falls, hangs, or rests mean the attempt is not a clean send.
 - A first-attempt send is not automatically onsight or flash.

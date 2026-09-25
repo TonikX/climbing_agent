@@ -17,6 +17,7 @@ const plugin = defineToolPlugin({
     tool(usePostgresApi(journal.finish_climbing_training)),
     tool(usePostgresApi(journal.get_current_climbing_training)),
     tool(usePostgresApi(journal.get_climbing_statistics)),
+    tool(usePostgresApi(journal.set_climbing_test_mode)),
     tool(usePostgresApi(journal.save_climbing_training)),
     tool(usePostgresApi(journal.update_climbing_training)),
     tool(usePostgresApi(journal.upsert_climbing_gear)),

@@ -2,7 +2,7 @@
   "id": "climbing-journal",
   "name": "Climbing Journal",
   "description": "Structured multi-user climbing journal with active training sessions, routes, areas, sectors, gear and user-reported weather.",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "configSchema": {
     "type": "object",
     "properties": {},
@@ -19,6 +19,7 @@
       "delete_climbing_attempt",
       "get_current_climbing_training",
       "get_climbing_statistics",
+      "set_climbing_test_mode",
       "save_climbing_training",
       "update_climbing_training",
       "finish_climbing_training",

@@ -174,6 +174,14 @@ export function createJournalTools() {
       }, { additionalProperties: false }),
     }),
 
+    set_climbing_test_mode: operation({
+      name: "set_climbing_test_mode", label: "Test mode", description: "Enable or disable automatic test marking for new attempts.",
+      parameters: Type.Object({
+        user: User,
+        enabled: Type.Boolean(),
+      }, { additionalProperties: false }),
+    }),
+
     upsert_climbing_gear: operation({
       name: "upsert_climbing_gear", label: "Save gear", description: "Create or update climbing gear.",
       parameters: Type.Object({

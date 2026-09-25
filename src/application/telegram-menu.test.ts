@@ -15,7 +15,8 @@ describe("Telegram journal menu", () => {
     registerTelegramMenu({ registerCommand: (command: unknown) => commands.push(command as Record<string, unknown>) } as never);
 
     expect(commands.map((command) => command.name)).toEqual([
-      "journal", "start_training", "another_attempt", "current_training", "week_stats", "finish_training",
+      "journal", "start_training", "toggle_test_mode", "another_attempt",
+      "current_training", "week_stats", "finish_training",
     ]);
     const journal = commands[0];
     const result = await (journal.handler as (ctx: unknown) => Promise<Record<string, unknown>>)({ senderId: "42" });
@@ -28,6 +29,7 @@ describe("Telegram journal menu", () => {
           { action: { type: "command", command: "/current_training" } },
           { action: { type: "command", command: "/week_stats" } },
           { action: { type: "command", command: "/finish_training" } },
+          { action: { type: "command", command: "/toggle_test_mode" } },
         ],
       }],
     });
