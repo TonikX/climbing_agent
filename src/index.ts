@@ -1,10 +1,11 @@
 import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 import { createJournalTools } from "./application/journal.js";
+import { registerTelegramMenu } from "./application/telegram-menu.js";
 import { usePostgresApi } from "./storage/api-client.js";
 
 const journal = createJournalTools();
 
-export default defineToolPlugin({
+const plugin = defineToolPlugin({
   id: "climbing-journal",
   name: "Climbing Journal",
   description: "Structured multi-user climbing journal with active training sessions, routes, areas, sectors, gear and user-reported weather.",
@@ -23,3 +24,11 @@ export default defineToolPlugin({
     tool(usePostgresApi(journal.get_climbing_trainings)),
   ],
 });
+
+const registerTools = plugin.register;
+plugin.register = async (api) => {
+  await registerTools(api);
+  registerTelegramMenu(api);
+};
+
+export default plugin;
