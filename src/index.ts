@@ -26,8 +26,8 @@ const plugin = defineToolPlugin({
 });
 
 const registerTools = plugin.register;
-plugin.register = async (api) => {
-  await registerTools(api);
+plugin.register = (api) => {
+  registerTools(api);
   registerTelegramMenu(api);
 };
 
