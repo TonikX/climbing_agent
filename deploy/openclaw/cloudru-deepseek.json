@@ -86,7 +86,17 @@
   },
   "channels": {
     "telegram": {
-      "dmHistoryLimit": 2
+      "dmHistoryLimit": 2,
+      "commands": {
+        "native": false,
+        "nativeSkills": false
+      },
+      "customCommands": [
+        {
+          "command": "journal",
+          "description": "Открыть меню скалолазного журнала"
+        }
+      ]
     }
   },
   "session": {
