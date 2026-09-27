@@ -15,12 +15,12 @@ describe("Telegram journal menu", () => {
     registerTelegramMenu({ registerCommand: (command: unknown) => commands.push(command as Record<string, unknown>) } as never);
 
     expect(commands.map((command) => command.name)).toEqual([
-      "journal", "start_training", "toggle_test_mode", "another_attempt",
+      "completed_routes", "journal", "start_training", "toggle_test_mode", "another_attempt",
       "stats_menu", "current_training", "current_training_details", "last_training",
       "last_training_details", "week_stats", "month_stats", "progress_stats", "grade_stats", "location_stats",
       "project_stats", "record_stats", "finish_training",
     ]);
-    const journal = commands[0];
+    const journal = commands.find(command => command.name === "journal")!;
     const result = await (journal.handler as (ctx: unknown) => Promise<Record<string, unknown>>)({ senderId: "42" });
     expect(result.text).toBe("Тренировка активна. Что сделать?");
     expect(result.interactive).toMatchObject({
@@ -28,6 +28,7 @@ describe("Telegram journal menu", () => {
         type: "buttons",
         buttons: [
           { action: { type: "command", command: "/another_attempt" } },
+          { action: { type: "command", command: "/completed_routes" } },
           { action: { type: "command", command: "/stats_menu" } },
           { action: { type: "command", command: "/finish_training" } },
           { action: { type: "command", command: "/toggle_test_mode" } },

@@ -20,6 +20,7 @@ type JournalState = { active: boolean; testMode: boolean };
 function menuButtons(active: boolean, testMode: boolean) {
   const buttons = active ? [
     { label: "🎙 Ещё попытка", action: { type: "command" as const, command: "/another_attempt" } },
+    { label: "✅ Пройденные трассы", action: { type: "command" as const, command: "/completed_routes" } },
     { label: "📊 Статистика", action: { type: "command" as const, command: "/stats_menu" } },
     { label: "✅ Завершить тренировку", action: { type: "command" as const, command: "/finish_training" } },
   ] : [
@@ -97,8 +98,10 @@ function summaryLines(title: string, value: JsonRecord, subtitle?: string): stri
     `${number(value.routesCount)} трасс · ${number(value.attemptsCount)} попыток`,
     "",
     `✅ ${number(value.completedRoutes)} пройдено`,
+    `👁 ${number(value.onsightCount)} Onsight`,
     `⚡ ${number(value.flashCount)} Flash`,
     `🎯 ${number(value.redpointCount)} Red Point`,
+    `❔ ${number(value.unknownStyleCount)} — стиль не указан`,
     `🔄 ${number(value.activeProjects)} проекта`,
     "",
     `Максимальная категория: ${text(value.maxGrade)}`,
@@ -239,6 +242,7 @@ async function showCurrent(ctx: PluginCommandContext): Promise<PluginCommandResu
       `${text(location.name, "Локация не указана")} · ${duration(result.durationMinutes)}`,
     ), [
       { label: "📋 Все попытки", command: "/current_training_details" },
+      { label: "✅ Пройденные трассы", command: "/completed_routes" },
       { label: "🔄 Проекты", command: "/project_stats" },
     ]);
   } catch (error) {
@@ -246,11 +250,14 @@ async function showCurrent(ctx: PluginCommandContext): Promise<PluginCommandResu
   }
 }
 
-async function showCurrentDetails(ctx: PluginCommandContext): Promise<PluginCommandResult> {
+async function showCurrentDetails(ctx: PluginCommandContext, completedOnly = false): Promise<PluginCommandResult> {
   try {
     const result = record(await currentTraining.execute({ user: telegramUser(ctx), detail: "full" }));
     if (result.active === false) return statisticsBack("Сейчас активной тренировки нет.");
-    return statisticsBack(routeDetailLines("📋 Все попытки текущей тренировки", result.routes),
+    const routes = completedOnly ? array(result.routes).filter(group =>
+      array(group.attempts).some(attempt => attempt.result === "send")) : result.routes;
+    return statisticsBack(completedOnly && array(routes).length === 0 ? "Пройденных трасс пока нет." :
+      routeDetailLines(completedOnly ? "✅ Пройденные трассы текущей тренировки" : "📋 Все попытки текущей тренировки", routes),
       [{ label: "← Текущая тренировка", command: "/current_training" }]);
   } catch (error) {
     return statisticsBack(`Не удалось загрузить попытки: ${error instanceof Error ? error.message : String(error)}`);
@@ -345,6 +352,13 @@ async function finish(ctx: PluginCommandContext): Promise<PluginCommandResult> {
 }
 
 export function registerTelegramMenu(api: OpenClawPluginApi): void {
+  api.registerCommand({
+    name: "completed_routes",
+    description: "Пройденные трассы текущей тренировки",
+    channels: ["telegram"],
+    acceptsArgs: false,
+    handler: (ctx) => showCurrentDetails(ctx, true),
+  });
   api.registerCommand({
     name: "journal",
     description: "Открыть меню скалолазного журнала",

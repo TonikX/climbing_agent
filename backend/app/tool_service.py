@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -451,27 +452,34 @@ async def _delete_attempt(session: AsyncSession, p: dict[str, Any]) -> dict[str,
 def _grade_rank(value: str | None) -> tuple[int, int, int]:
     if not value:
         return (-1, -1, -1)
-    grade = value.strip().upper()
-    digits = "".join(ch for ch in grade if ch.isdigit())
-    number = int(digits) if digits else -1
-    letter = next((ch for ch in grade if ch in "ABC"), "")
-    modifier = 1 if "+" in grade else 0
-    return (number, "ABC".find(letter), modifier)
+    grades = re.findall(r"(\d+)([ABC]?)(\+?)", value.strip().upper())
+    return max(((int(number), "ABC".find(letter) if letter else -1, int(bool(plus)))
+                for number, letter, plus in grades), default=(-1, -1, -1))
 
 
 def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
+    attempts = [a for a in attempts if not a.is_test]
     sessions = {a.route_session_key or a.id for a in attempts}
     completed = {a.route_session_key or a.id for a in attempts if a.result == "send"}
     projects = {a.route_session_key or a.id for a in attempts if a.result == "project"} - completed
     grades = [(a.route_snapshot or {}).get("grade") or (a.route.grade if a.route else None) for a in attempts]
     max_grade = max((grade for grade in grades if grade), key=_grade_rank, default=None)
+    # Count each completed route once, using its first successful ascent.
+    sends: dict[str, RouteAttempt] = {}
+    for attempt in sorted(attempts, key=lambda a: a.sequence):
+        if attempt.result == "send":
+            sends.setdefault(attempt.route_session_key or attempt.id, attempt)
+    styles = {style: sum(a.style == style for a in sends.values())
+              for style in ("onsight", "flash", "redpoint", "unknown")}
     return {
         "routesCount": len(sessions),
         "attemptsCount": sum(a.attempts for a in attempts),
         "completedRoutes": len(completed),
         "activeProjects": len(projects),
-        "flashCount": sum(1 for a in attempts if a.style == "flash"),
-        "redpointCount": sum(1 for a in attempts if a.style == "redpoint"),
+        "onsightCount": styles["onsight"],
+        "flashCount": styles["flash"],
+        "redpointCount": styles["redpoint"],
+        "unknownStyleCount": styles["unknown"],
         "maxGrade": max_grade,
     }
 
@@ -559,7 +567,9 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
             selectinload(TrainingSession.sections)).where(
             TrainingSession.user_id == user.id,
             TrainingSession.status == "completed",
-        ).order_by(TrainingSession.local_date.desc(), TrainingSession.created_at.desc()).limit(1))
+            TrainingSession.attempts.any(RouteAttempt.is_test.is_(False)),
+        ).order_by(TrainingSession.local_date.desc(), TrainingSession.started_at.desc().nullslast(),
+                   TrainingSession.created_at.desc(), TrainingSession.id.desc()).limit(1))
         if not training:
             return {"scope": scope, "training": None}
         attempts = [attempt for attempt in training.attempts if not attempt.is_test]
@@ -712,7 +722,10 @@ async def _get_trainings(session: AsyncSession, p: dict[str, Any]) -> dict[str, 
     query = select(TrainingSession).options(
         selectinload(TrainingSession.attempts).selectinload(RouteAttempt.route).selectinload(Route.section),
         selectinload(TrainingSession.sections), selectinload(TrainingSession.gear))
-    if p.get("userId"): query = query.where(TrainingSession.user_id == p["userId"])
+    if p.get("user"):
+        user = await _user(session, p["user"])
+        query = query.where(TrainingSession.user_id == user.id)
+    elif p.get("userId"): query = query.where(TrainingSession.user_id == p["userId"])
     elif p.get("userName"):
         user = await session.scalar(select(User).where(func.lower(User.name) == _norm(p["userName"])))
         if not user: return {"count": 0, "trainings": []}
