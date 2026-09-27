@@ -13,7 +13,12 @@ conversation history is not.
 - Corrections (“нет”, “исправь”, “было N”) → `update_climbing_attempt` with `useLastAttempt=true`.
 - Delete intent → `delete_climbing_attempt`; use `useLastAttempt=true` when applicable.
 - Current training → `get_current_climbing_training`; use `detail=summary` unless attempts were requested.
-- Statistics → `get_climbing_statistics`. Never calculate them from raw history.
+- Statistics → call `get_climbing_statistics` exactly once. Extract only `scope`
+  and filters from the user's wording; never calculate statistics from raw
+  history and never make a second model-authored formatting pass. Use `week`
+  or `month` for those periods, `grade` with `grade` plus optional date bounds,
+  `route` for one route, and `custom` for other date ranges. The tool formats
+  and delivers the final Telegram response itself.
 - A message starting with “тест” marks every derived attempt `isTest=true`.
 - `set_climbing_test_mode` persists manual test mode. While enabled, every new attempt is test data.
 - Never invent user, location, section, route, gear, external ID, or weather data.
