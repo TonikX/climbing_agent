@@ -476,6 +476,18 @@ def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
     }
 
 
+def _duration_minutes(training: TrainingSession) -> int | None:
+    if training.duration_minutes is not None:
+        return training.duration_minutes
+    if not training.started_at:
+        return None
+    started = training.started_at
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=UTC)
+    end = training.completed_at or datetime.now(UTC)
+    return max(0, int((end - started).total_seconds() // 60))
+
+
 async def _get_current(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     user = await _user(session, p["user"])
     training = await _active(session, user.id)
@@ -486,6 +498,7 @@ async def _get_current(session: AsyncSession, p: dict[str, Any]) -> dict[str, An
     response: dict[str, Any] = {
         "active": True, "id": training.id, "status": training.status,
         "testMode": user.test_mode_enabled,
+        "date": training.local_date.isoformat(), "durationMinutes": _duration_minutes(training),
         "location": {"name": area.name} if area else None,
         "summary": _summary(attempts),
     }
@@ -536,6 +549,21 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
         start, end = today.replace(day=1), today
         previous_end = start - timedelta(days=1)
         previous_start = previous_end.replace(day=1)
+    if scope == "last_training":
+        training = await session.scalar(select(TrainingSession).options(
+            selectinload(TrainingSession.attempts).selectinload(RouteAttempt.route)).where(
+            TrainingSession.user_id == user.id,
+            TrainingSession.status == "completed",
+        ).order_by(TrainingSession.local_date.desc(), TrainingSession.created_at.desc()).limit(1))
+        if not training:
+            return {"scope": scope, "training": None}
+        attempts = [attempt for attempt in training.attempts if not attempt.is_test]
+        area = await session.get(Location, training.primary_location_id) if training.primary_location_id else None
+        return {"scope": scope, "training": {
+            "trainingId": training.id, "date": training.local_date.isoformat(),
+            "location": _area_dict(area), "durationMinutes": _duration_minutes(training),
+            **_summary(attempts),
+        }}
     rows = await _statistics_rows(session, user.id, start, end)
     route_name = _norm(p.get("route"))
     if p.get("routeId") or route_name:
@@ -569,6 +597,55 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
              "highPoint": a.high_point, "totalMoves": a.total_moves, "falls": a.falls}
             for a in latest.values() if a.result == "project"
         ][:limit]
+    elif scope == "grades":
+        grouped: dict[str, list[RouteAttempt]] = {}
+        for attempt in attempts:
+            grade = (attempt.route_snapshot or {}).get("grade") or (attempt.route.grade if attempt.route else None)
+            grouped.setdefault(grade or "Без категории", []).append(attempt)
+        result["grades"] = [
+            {"grade": grade, **_summary(values)}
+            for grade, values in sorted(grouped.items(), key=lambda item: _grade_rank(item[0]), reverse=True)
+        ]
+    elif scope == "locations":
+        grouped_rows: dict[str | None, list[RouteAttempt]] = {}
+        training_by_location: dict[str | None, set[str]] = {}
+        for training, attempt in rows:
+            grouped_rows.setdefault(training.primary_location_id, []).append(attempt)
+            training_by_location.setdefault(training.primary_location_id, set()).add(training.id)
+        locations = {location.id: location for location in (await session.scalars(select(Location))).all()}
+        result["locations"] = [
+            {"location": _area_dict(locations.get(location_id)),
+             "trainingsCount": len(training_by_location[location_id]), **_summary(values)}
+            for location_id, values in grouped_rows.items()
+        ]
+        result["locations"].sort(key=lambda value: value["attemptsCount"], reverse=True)
+    elif scope == "progress":
+        months: dict[str, list[tuple[TrainingSession, RouteAttempt]]] = {}
+        for row in rows:
+            months.setdefault(row[0].local_date.strftime("%Y-%m"), []).append(row)
+        result["periods"] = [
+            {"period": period, "trainingsCount": len({training.id for training, _ in values}),
+             **_summary([attempt for _, attempt in values])}
+            for period, values in sorted(months.items(), reverse=True)[:6]
+        ]
+    elif scope == "records":
+        completed = [attempt for attempt in attempts if attempt.result == "send"]
+        completed_grades = [(attempt.route_snapshot or {}).get("grade") or
+                            (attempt.route.grade if attempt.route else None) for attempt in completed]
+        result["records"] = {
+            "highestCompletedGrade": max((grade for grade in completed_grades if grade), key=_grade_rank, default=None),
+            "highestFlashGrade": max(((attempt.route_snapshot or {}).get("grade") or
+                                      (attempt.route.grade if attempt.route else None)
+                                      for attempt in completed if attempt.style == "flash"),
+                                     key=_grade_rank, default=None),
+            "highestRedpointGrade": max(((attempt.route_snapshot or {}).get("grade") or
+                                         (attempt.route.grade if attempt.route else None)
+                                         for attempt in completed if attempt.style == "redpoint"),
+                                        key=_grade_rank, default=None),
+            "totalTrainings": result["trainingsCount"],
+            "totalAttempts": result["attemptsCount"],
+            "totalCompletedRoutes": result["completedRoutes"],
+        }
     return result
 
 

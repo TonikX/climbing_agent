@@ -16,7 +16,9 @@ describe("Telegram journal menu", () => {
 
     expect(commands.map((command) => command.name)).toEqual([
       "journal", "start_training", "toggle_test_mode", "another_attempt",
-      "current_training", "week_stats", "finish_training",
+      "stats_menu", "current_training", "current_training_details", "last_training",
+      "week_stats", "month_stats", "progress_stats", "grade_stats", "location_stats",
+      "project_stats", "record_stats", "finish_training",
     ]);
     const journal = commands[0];
     const result = await (journal.handler as (ctx: unknown) => Promise<Record<string, unknown>>)({ senderId: "42" });
@@ -26,12 +28,16 @@ describe("Telegram journal menu", () => {
         type: "buttons",
         buttons: [
           { action: { type: "command", command: "/another_attempt" } },
-          { action: { type: "command", command: "/current_training" } },
-          { action: { type: "command", command: "/week_stats" } },
+          { action: { type: "command", command: "/stats_menu" } },
           { action: { type: "command", command: "/finish_training" } },
           { action: { type: "command", command: "/toggle_test_mode" } },
         ],
       }],
     });
+
+    const stats = commands.find((command) => command.name === "stats_menu")!;
+    const statsResult = await (stats.handler as () => Promise<Record<string, unknown>>)();
+    expect(statsResult.text).toBe("📊 Статистика");
+    expect(JSON.stringify(statsResult.interactive)).toContain("/record_stats");
   });
 });

@@ -167,7 +167,9 @@ export function createJournalTools() {
       parameters: Type.Object({
         user: User,
         scope: Type.Union([Type.Literal("week"), Type.Literal("month"), Type.Literal("custom"),
-          Type.Literal("route"), Type.Literal("projects"), Type.Literal("records")]),
+          Type.Literal("route"), Type.Literal("projects"), Type.Literal("records"),
+          Type.Literal("last_training"), Type.Literal("progress"), Type.Literal("grades"),
+          Type.Literal("locations")]),
         dateFrom: Type.Optional(Type.String()), dateTo: Type.Optional(Type.String()),
         routeId: Type.Optional(Type.String()), route: Type.Optional(Type.String()),
         limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
