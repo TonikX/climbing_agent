@@ -105,6 +105,78 @@ function summaryLines(title: string, value: JsonRecord, subtitle?: string): stri
   ].filter((line) => line !== undefined).join("\n");
 }
 
+function routeDetailLines(title: string, routes: unknown): string {
+  const lines = [title];
+  for (const group of array(routes)) {
+    const route = record(group.route);
+    const section = record(group.section);
+    lines.push("", `${text(section.name, "Без сектора")} · ${text(route.name, "Без названия")} ${text(route.grade, "")}`.trim());
+    for (const attempt of array(group.attempts)) {
+      const resultValue = text(attempt.result, "unknown");
+      const mark = resultValue === "send" ? "✅" : resultValue === "project" ? "🔄" : "•";
+      const details = [attempt.highPoint !== null && attempt.highPoint !== undefined ? `до ${number(attempt.highPoint)}` : "",
+        attempt.falls !== null && attempt.falls !== undefined ? `${number(attempt.falls)} срыв.` : ""].filter(Boolean).join(", ");
+      lines.push(`${mark} №${number(attempt.number)}${details ? ` — ${details}` : ""}`);
+    }
+  }
+  if (lines.length === 1) lines.push("", "Попыток пока нет.");
+  return lines.join("\n");
+}
+
+export function formatStatisticsResult(scope: string, raw: unknown): string {
+  const result = record(raw);
+  if (scope === "last_training") {
+    const training = record(result.training);
+    if (!result.training) return "Завершённых тренировок пока нет.";
+    const location = record(training.location);
+    return summaryLines("🧗 Последняя тренировка", training,
+      `${text(training.date)} · ${text(location.name, "Локация не указана")} · ${duration(training.durationMinutes)}`);
+  }
+  if (scope === "progress") {
+    const lines = ["📈 Прогресс за последние месяцы"];
+    for (const period of array(result.periods)) lines.push("", `${text(period.period)}: ${number(period.trainingsCount)} трен. · ${number(period.completedRoutes)} пройдено · max ${text(period.maxGrade)}`);
+    if (lines.length === 1) lines.push("", "Данных пока нет.");
+    return lines.join("\n");
+  }
+  if (scope === "grades") {
+    const lines = ["🎯 Статистика по категориям"];
+    for (const grade of array(result.grades)) lines.push(`${text(grade.grade)} — ${number(grade.routesCount)} трасс · ${number(grade.attemptsCount)} попыток · ✅ ${number(grade.completedRoutes)}`);
+    if (lines.length === 1) lines.push("", "Данных пока нет.");
+    return lines.join("\n");
+  }
+  if (scope === "locations") {
+    const lines = ["📍 Статистика по локациям"];
+    for (const item of array(result.locations)) {
+      const location = record(item.location);
+      lines.push(`${text(location.name, "Без локации")} — ${number(item.trainingsCount)} трен. · ${number(item.routesCount)} трасс · ✅ ${number(item.completedRoutes)}`);
+    }
+    if (lines.length === 1) lines.push("", "Данных пока нет.");
+    return lines.join("\n");
+  }
+  if (scope === "projects") {
+    const lines = ["🔄 Активные проекты"];
+    for (const item of array(result.projects)) {
+      const route = record(item.route);
+      const progress = item.highPoint !== null && item.highPoint !== undefined ? ` · до ${number(item.highPoint)}/${text(item.totalMoves)}` : "";
+      lines.push(`${text(route.name, "Без названия")} ${text(route.grade, "")}${progress}`.trim());
+    }
+    if (lines.length === 1) lines.push("", "Активных проектов нет.");
+    return lines.join("\n");
+  }
+  if (scope === "records") {
+    const records = record(result.records);
+    return ["🏆 Рекорды", "", `Высшая пройденная категория: ${text(records.highestCompletedGrade)}`,
+      `Высший Flash: ${text(records.highestFlashGrade)}`, `Высший Red Point: ${text(records.highestRedpointGrade)}`, "",
+      `Тренировок: ${number(records.totalTrainings)}`, `Попыток: ${number(records.totalAttempts)}`,
+      `Пройдено трасс: ${number(records.totalCompletedRoutes)}`].join("\n");
+  }
+  const titles: Record<string, string> = {
+    week: "📅 Эта неделя", month: "🗓 Этот месяц", grade: `🎯 Категория ${text(result.grade, "")}`,
+    route: "🧗 Статистика по трассе", custom: "📊 Статистика за период",
+  };
+  return summaryLines(titles[scope] ?? "📊 Статистика", result, `${number(result.trainingsCount)} тренировок`);
+}
+
 function menu(textValue: string, state: JournalState): PluginCommandResult {
   const mode = state.testMode ? "\n\n🧪 Тестовый режим включён: новые пролазы не попадут в статистику." : "";
   return { text: `${textValue}${mode}`, interactive: menuButtons(state.active, state.testMode) };
@@ -178,21 +250,8 @@ async function showCurrentDetails(ctx: PluginCommandContext): Promise<PluginComm
   try {
     const result = record(await currentTraining.execute({ user: telegramUser(ctx), detail: "full" }));
     if (result.active === false) return statisticsBack("Сейчас активной тренировки нет.");
-    const lines = ["📋 Все попытки текущей тренировки"];
-    for (const group of array(result.routes)) {
-      const route = record(group.route);
-      const section = record(group.section);
-      lines.push("", `${text(section.name, "Без сектора")} · ${text(route.name, "Без названия")} ${text(route.grade, "")}`.trim());
-      for (const attempt of array(group.attempts)) {
-        const resultValue = text(attempt.result, "unknown");
-        const mark = resultValue === "send" ? "✅" : resultValue === "project" ? "🔄" : "•";
-        const details = [attempt.highPoint !== null && attempt.highPoint !== undefined ? `до ${number(attempt.highPoint)}` : "",
-          attempt.falls !== null && attempt.falls !== undefined ? `${number(attempt.falls)} срыв.` : ""].filter(Boolean).join(", ");
-        lines.push(`${mark} №${number(attempt.number)}${details ? ` — ${details}` : ""}`);
-      }
-    }
-    if (lines.length === 1) lines.push("", "Попыток пока нет.");
-    return statisticsBack(lines.join("\n"), [{ label: "← Текущая тренировка", command: "/current_training" }]);
+    return statisticsBack(routeDetailLines("📋 Все попытки текущей тренировки", result.routes),
+      [{ label: "← Текущая тренировка", command: "/current_training" }]);
   } catch (error) {
     return statisticsBack(`Не удалось загрузить попытки: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -201,8 +260,7 @@ async function showCurrentDetails(ctx: PluginCommandContext): Promise<PluginComm
 async function showPeriod(ctx: PluginCommandContext, scope: "week" | "month"): Promise<PluginCommandResult> {
   try {
     const result = record(await statistics.execute({ user: telegramUser(ctx), scope }));
-    const title = scope === "week" ? "📅 Эта неделя" : "🗓 Этот месяц";
-    return statisticsBack(summaryLines(title, result, `${number(result.trainingsCount)} тренировок`));
+    return statisticsBack(formatStatisticsResult(scope, result));
   } catch (error) {
     return statisticsBack(`Не удалось загрузить статистику: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -211,28 +269,30 @@ async function showPeriod(ctx: PluginCommandContext, scope: "week" | "month"): P
 async function showLastTraining(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
     const response = record(await statistics.execute({ user: telegramUser(ctx), scope: "last_training" }));
-    const result = record(response.training);
     if (!response.training) return statisticsBack("Завершённых тренировок пока нет.");
-    const location = record(result.location);
-    return statisticsBack(summaryLines(
-      "🧗 Последняя тренировка",
-      result,
-      `${text(result.date)} · ${text(location.name, "Локация не указана")} · ${duration(result.durationMinutes)}`,
-    ));
+    return statisticsBack(formatStatisticsResult("last_training", response),
+      [{ label: "📋 Подробнее", command: "/last_training_details" }]);
   } catch (error) {
     return statisticsBack(`Не удалось загрузить последнюю тренировку: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function showLastTrainingDetails(ctx: PluginCommandContext): Promise<PluginCommandResult> {
+  try {
+    const response = record(await statistics.execute({ user: telegramUser(ctx), scope: "last_training", detail: "full" }));
+    const training = record(response.training);
+    if (!response.training) return statisticsBack("Завершённых тренировок пока нет.");
+    return statisticsBack(routeDetailLines("📋 Последняя тренировка — все попытки", training.routes),
+      [{ label: "← Последняя тренировка", command: "/last_training" }]);
+  } catch (error) {
+    return statisticsBack(`Не удалось загрузить попытки: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 async function showProgress(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
     const result = record(await statistics.execute({ user: telegramUser(ctx), scope: "progress" }));
-    const lines = ["📈 Прогресс за последние месяцы"];
-    for (const period of array(result.periods)) {
-      lines.push("", `${text(period.period)}: ${number(period.trainingsCount)} трен. · ${number(period.completedRoutes)} пройдено · max ${text(period.maxGrade)}`);
-    }
-    if (lines.length === 1) lines.push("", "Данных пока нет.");
-    return statisticsBack(lines.join("\n"));
+    return statisticsBack(formatStatisticsResult("progress", result));
   } catch (error) {
     return statisticsBack(`Не удалось загрузить прогресс: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -241,12 +301,7 @@ async function showProgress(ctx: PluginCommandContext): Promise<PluginCommandRes
 async function showGrades(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
     const result = record(await statistics.execute({ user: telegramUser(ctx), scope: "grades" }));
-    const lines = ["🎯 Статистика по категориям"];
-    for (const grade of array(result.grades)) {
-      lines.push(`${text(grade.grade)} — ${number(grade.routesCount)} трасс · ${number(grade.attemptsCount)} попыток · ✅ ${number(grade.completedRoutes)}`);
-    }
-    if (lines.length === 1) lines.push("", "Данных пока нет.");
-    return statisticsBack(lines.join("\n"));
+    return statisticsBack(formatStatisticsResult("grades", result));
   } catch (error) {
     return statisticsBack(`Не удалось загрузить категории: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -255,13 +310,7 @@ async function showGrades(ctx: PluginCommandContext): Promise<PluginCommandResul
 async function showLocations(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
     const result = record(await statistics.execute({ user: telegramUser(ctx), scope: "locations" }));
-    const lines = ["📍 Статистика по локациям"];
-    for (const item of array(result.locations)) {
-      const location = record(item.location);
-      lines.push(`${text(location.name, "Без локации")} — ${number(item.trainingsCount)} трен. · ${number(item.routesCount)} трасс · ✅ ${number(item.completedRoutes)}`);
-    }
-    if (lines.length === 1) lines.push("", "Данных пока нет.");
-    return statisticsBack(lines.join("\n"));
+    return statisticsBack(formatStatisticsResult("locations", result));
   } catch (error) {
     return statisticsBack(`Не удалось загрузить локации: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -270,14 +319,7 @@ async function showLocations(ctx: PluginCommandContext): Promise<PluginCommandRe
 async function showProjects(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
     const result = record(await statistics.execute({ user: telegramUser(ctx), scope: "projects", limit: 20 }));
-    const lines = ["🔄 Активные проекты"];
-    for (const item of array(result.projects)) {
-      const route = record(item.route);
-      const progress = item.highPoint !== null && item.highPoint !== undefined ? ` · до ${number(item.highPoint)}/${text(item.totalMoves)}` : "";
-      lines.push(`${text(route.name, "Без названия")} ${text(route.grade, "")}${progress}`.trim());
-    }
-    if (lines.length === 1) lines.push("", "Активных проектов нет.");
-    return statisticsBack(lines.join("\n"));
+    return statisticsBack(formatStatisticsResult("projects", result));
   } catch (error) {
     return statisticsBack(`Не удалось загрузить проекты: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -286,18 +328,7 @@ async function showProjects(ctx: PluginCommandContext): Promise<PluginCommandRes
 async function showRecords(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
     const result = record(await statistics.execute({ user: telegramUser(ctx), scope: "records" }));
-    const records = record(result.records);
-    return statisticsBack([
-      "🏆 Рекорды",
-      "",
-      `Высшая пройденная категория: ${text(records.highestCompletedGrade)}`,
-      `Высший Flash: ${text(records.highestFlashGrade)}`,
-      `Высший Red Point: ${text(records.highestRedpointGrade)}`,
-      "",
-      `Тренировок: ${number(records.totalTrainings)}`,
-      `Попыток: ${number(records.totalAttempts)}`,
-      `Пройдено трасс: ${number(records.totalCompletedRoutes)}`,
-    ].join("\n"));
+    return statisticsBack(formatStatisticsResult("records", result));
   } catch (error) {
     return statisticsBack(`Не удалось загрузить рекорды: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -373,6 +404,13 @@ export function registerTelegramMenu(api: OpenClawPluginApi): void {
     channels: ["telegram"],
     acceptsArgs: false,
     handler: showLastTraining,
+  });
+  api.registerCommand({
+    name: "last_training_details",
+    description: "Показать все попытки последней тренировки",
+    channels: ["telegram"],
+    acceptsArgs: false,
+    handler: showLastTrainingDetails,
   });
   api.registerCommand({
     name: "week_stats",

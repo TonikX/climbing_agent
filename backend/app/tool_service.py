@@ -488,6 +488,21 @@ def _duration_minutes(training: TrainingSession) -> int | None:
     return max(0, int((end - started).total_seconds() // 60))
 
 
+def _route_groups(training: TrainingSession, attempts: list[RouteAttempt]) -> list[dict[str, Any]]:
+    groups: dict[str, dict[str, Any]] = {}
+    for attempt in sorted(attempts, key=lambda value: value.sequence):
+        key = attempt.route_session_key or attempt.id
+        snapshot = attempt.route_snapshot or {}
+        group = groups.setdefault(key, {
+            "route": {"name": snapshot.get("name"), "grade": snapshot.get("grade")},
+            "section": next(({"id": section.id, "name": section.name} for section in training.sections
+                             if section.id == snapshot.get("sectorId")), None),
+            "attempts": [],
+        })
+        group["attempts"].append(_attempt_dict(attempt, attempt.route))
+    return list(groups.values())
+
+
 async def _get_current(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     user = await _user(session, p["user"])
     training = await _active(session, user.id)
@@ -503,18 +518,7 @@ async def _get_current(session: AsyncSession, p: dict[str, Any]) -> dict[str, An
         "summary": _summary(attempts),
     }
     if p.get("detail", "summary") == "full":
-        route_groups: dict[str, dict[str, Any]] = {}
-        for attempt in sorted(attempts, key=lambda value: value.sequence):
-            key = attempt.route_session_key or attempt.id
-            snapshot = attempt.route_snapshot or {}
-            group = route_groups.setdefault(key, {
-                "route": {"name": snapshot.get("name"), "grade": snapshot.get("grade")},
-                "section": next(({"id": s.id, "name": s.name} for s in training.sections
-                                 if s.id == snapshot.get("sectorId")), None),
-                "attempts": [],
-            })
-            group["attempts"].append(_attempt_dict(attempt, attempt.route))
-        response["routes"] = list(route_groups.values())
+        response["routes"] = _route_groups(training, attempts)
     return response
 
 
@@ -551,7 +555,8 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
         previous_start = previous_end.replace(day=1)
     if scope == "last_training":
         training = await session.scalar(select(TrainingSession).options(
-            selectinload(TrainingSession.attempts).selectinload(RouteAttempt.route)).where(
+            selectinload(TrainingSession.attempts).selectinload(RouteAttempt.route),
+            selectinload(TrainingSession.sections)).where(
             TrainingSession.user_id == user.id,
             TrainingSession.status == "completed",
         ).order_by(TrainingSession.local_date.desc(), TrainingSession.created_at.desc()).limit(1))
@@ -559,11 +564,14 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
             return {"scope": scope, "training": None}
         attempts = [attempt for attempt in training.attempts if not attempt.is_test]
         area = await session.get(Location, training.primary_location_id) if training.primary_location_id else None
-        return {"scope": scope, "training": {
+        result = {"scope": scope, "training": {
             "trainingId": training.id, "date": training.local_date.isoformat(),
             "location": _area_dict(area), "durationMinutes": _duration_minutes(training),
             **_summary(attempts),
         }}
+        if p.get("detail") == "full":
+            result["training"]["routes"] = _route_groups(training, attempts)
+        return result
     rows = await _statistics_rows(session, user.id, start, end)
     route_name = _norm(p.get("route"))
     if p.get("routeId") or route_name:
@@ -571,10 +579,16 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
                 (p.get("routeId") and a.route_id == p["routeId"]) or
                 (route_name and route_name in _norm((a.route_snapshot or {}).get("name") or
                                                     (a.route.name if a.route else None)))]
+    grade = _norm(p.get("grade"))
+    if grade:
+        rows = [(training, attempt) for training, attempt in rows if grade == _norm(
+            (attempt.route_snapshot or {}).get("grade") or (attempt.route.grade if attempt.route else None))]
     attempts = [attempt for _, attempt in rows]
     result = {"scope": scope, "dateFrom": start.isoformat() if start else None,
               "dateTo": end.isoformat() if end else None,
               "trainingsCount": len({training.id for training, _ in rows}), **_summary(attempts)}
+    if p.get("grade"):
+        result["grade"] = p["grade"]
     if previous_start and previous_end:
         previous_rows = await _statistics_rows(session, user.id, previous_start, previous_end)
         previous_attempts = [attempt for _, attempt in previous_rows]

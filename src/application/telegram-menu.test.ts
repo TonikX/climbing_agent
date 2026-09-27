@@ -17,7 +17,7 @@ describe("Telegram journal menu", () => {
     expect(commands.map((command) => command.name)).toEqual([
       "journal", "start_training", "toggle_test_mode", "another_attempt",
       "stats_menu", "current_training", "current_training_details", "last_training",
-      "week_stats", "month_stats", "progress_stats", "grade_stats", "location_stats",
+      "last_training_details", "week_stats", "month_stats", "progress_stats", "grade_stats", "location_stats",
       "project_stats", "record_stats", "finish_training",
     ]);
     const journal = commands[0];
