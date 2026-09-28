@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 
 from fastapi import HTTPException
-from app.attempt_outcome import outcome
+from app.attempt_outcome import normalized_style, outcome
 from app.tool_service import _summary
 
 
@@ -14,6 +14,7 @@ class OutcomeTest(unittest.TestCase):
         self.assertEqual(outcome({"reachedTop": True, "falls": 2})["clean_ascent"], False)
         self.assertEqual(outcome({"result": "send", "style": "flash"})["clean_ascent"], True)
         self.assertFalse(outcome({"style": "redpoint", "notes": "Долез с перерывом"})["clean_ascent"])
+        self.assertEqual(normalized_style({"style": "redpoint", "notes": "Долез с перерывом"}), "unknown")
         self.assertFalse(outcome({"style": "flash", "falls": 1})["clean_ascent"])
         self.assertTrue(outcome({"style": "onsight", "notes": "Без срывов и зависаний"})["clean_ascent"])
         for raw in ({"reachedTop": "yes"},):

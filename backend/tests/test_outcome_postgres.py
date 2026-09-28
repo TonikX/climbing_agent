@@ -79,6 +79,12 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([tuple(row) for row in rows], [
             ("send", True, True), ("send", True, False), ("project", True, False), ("unknown", True, True),
             ("send", True, True), ("send", True, False), ("send", True, False)])
+        path = Path(__file__).parents[1] / "migrations/versions/20260929_0010_normalize_nonclean_style.py"
+        spec = importlib.util.spec_from_file_location("normalize_nonclean_style_migration", path)
+        migration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration)
+        await self.conn.run_sync(upgrade)
+        self.assertEqual(await self.conn.scalar(text("SELECT style FROM route_attempts WHERE id=9")), "unknown")
         for sql in (
             "INSERT INTO route_attempts (id,reached_top,clean_ascent) VALUES (5,false,true)",
             "INSERT INTO route_attempts (id,reached_top,clean_ascent,falls) VALUES (6,true,true,1)",

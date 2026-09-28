@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, with_loader_criteria
 
-from app.attempt_outcome import outcome
+from app.attempt_outcome import normalized_style, outcome
 from app.models import ExternalRef, RouteAttempt, TrainingSession, TrainingStatus, User
 from app.schemas import AttemptCreate, FinishTraining, TrainingCreate, UserResolveRequest
 
@@ -96,7 +96,7 @@ async def append_attempt(
         attempts=command.attempts,
         **facts,
         falls=command.falls,
-        style=command.style,
+        style=normalized_style(raw),
         belay=command.belay,
         feel=command.feel,
         notes=command.notes,

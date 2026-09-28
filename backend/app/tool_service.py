@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.attempt_outcome import outcome
+from app.attempt_outcome import normalized_style, outcome
 from app.models import ExternalRef, Gear, Location, Route, RouteAttempt, Section, TrainingSession, User
 
 
@@ -228,7 +228,7 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
         RouteAttempt.route_session_key == route_session_key))) + 1
     facts = outcome(raw)
     falls = raw.get("falls")
-    style = str(raw.get("style") or "unknown")
+    style = normalized_style(raw)
     if facts["clean_ascent"] is True and attempt_number > 1 and style == "unknown":
         style = "redpoint"
     item = RouteAttempt(
@@ -375,11 +375,13 @@ async def _save(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
         if merged and len(candidates) == 1:
             item = candidates[0]
             facts = outcome(raw, item)
+            style = normalized_style(raw, item)
             for key, value in facts.items(): setattr(item, key, value)
-            for source, target in (("attempts", "attempts"), ("falls", "falls"), ("style", "style"),
+            for source, target in (("attempts", "attempts"), ("falls", "falls"),
                                    ("belay", "belay"), ("feel", "feel"), ("notes", "notes")):
                 if source in raw and (raw[source] is not None or source == "falls"):
                     setattr(item, target, raw[source])
+            item.style = style
             if "isTest" in raw or user.test_mode_enabled:
                 item.is_test = bool(raw.get("isTest", False) or user.test_mode_enabled)
         else:
@@ -429,16 +431,20 @@ async def _update_attempt(session: AsyncSession, p: dict[str, Any]) -> dict[str,
     user = await _user(session, p["user"])
     item = await _attempt_target(session, user.id, p)
     facts = outcome(p, item)
+    style = normalized_style(p, item)
     for key, value in facts.items(): setattr(item, key, value)
     updated: dict[str, Any] = {"reachedTop": item.reached_top, "cleanAscent": item.clean_ascent}
     mapping = {
         "highPoint": "high_point", "totalMoves": "total_moves", "falls": "falls",
-        "style": "style", "feel": "feel", "notes": "notes",
+        "feel": "feel", "notes": "notes",
     }
     for source, target in mapping.items():
         if source in p:
             setattr(item, target, p[source])
             updated[source] = p[source]
+    if item.style != style:
+        item.style = style
+        updated["style"] = style
     return {"success": True, "attemptId": item.id, "number": item.attempt_number, "updated": updated}
 
 

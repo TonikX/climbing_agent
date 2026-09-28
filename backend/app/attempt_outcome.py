@@ -14,6 +14,11 @@ def has_nonclean_evidence(raw: dict, current=None) -> bool:
         r"срыв|сорв|завис|повис|с\s+перерыв", normalized))
 
 
+def normalized_style(raw: dict, current=None) -> str:
+    style = str(raw.get("style", getattr(current, "style", "unknown")) or "unknown")
+    return "unknown" if style in ("onsight", "flash", "redpoint") and has_nonclean_evidence(raw, current) else style
+
+
 def outcome(raw: dict, current=None) -> dict:
     top = getattr(current, "reached_top", None)
     clean = getattr(current, "clean_ascent", None)
