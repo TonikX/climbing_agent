@@ -465,6 +465,7 @@ def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
     attempts = [a for a in attempts if not a.is_test]
     sessions = {a.route_session_key or a.id for a in attempts}
     completed = {a.route_session_key or a.id for a in attempts if a.clean_ascent is True}
+    reached = {a.route_session_key or a.id for a in attempts if a.reached_top is True}
     projects = sessions - completed
     grades = [(a.route_snapshot or {}).get("grade") or (a.route.grade if a.route else None) for a in attempts]
     max_grade = max((grade for grade in grades if grade), key=_grade_rank, default=None)
@@ -479,13 +480,18 @@ def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
         "routesCount": len(sessions),
         "attemptsCount": sum(a.attempts for a in attempts),
         "completedRoutes": len(completed),
-        "reachedTopRoutes": len({a.route_session_key or a.id for a in attempts if a.reached_top is True}),
+        "reachedTopRoutes": len(reached),
         "unknownCleanRoutes": len({a.route_session_key or a.id for a in attempts if a.clean_ascent is None} - completed),
         "activeProjects": len(projects),
         "onsightCount": styles["onsight"],
         "flashCount": styles["flash"],
         "redpointCount": styles["redpoint"],
         "unknownStyleCount": styles["unknown"],
+        "leadAttemptsCount": sum(a.attempts for a in attempts if a.belay == "lead"),
+        "topRopeAttemptsCount": sum(a.attempts for a in attempts if a.belay == "top_rope"),
+        "autoBelayAttemptsCount": sum(a.attempts for a in attempts if a.belay == "auto_belay"),
+        "boulderingAttemptsCount": sum(a.attempts for a in attempts if a.belay == "bouldering"),
+        "unknownBelayAttemptsCount": sum(a.attempts for a in attempts if a.belay == "unknown"),
         "maxGrade": max_grade,
     }
 

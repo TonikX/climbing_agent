@@ -31,8 +31,12 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
         await engine.dispose()
 
     async def test_migration_preserves_unknown_and_original_result(self):
-        await self.conn.execute(text("CREATE TABLE route_attempts (id int, result text, falls int)"))
-        await self.conn.execute(text("INSERT INTO route_attempts VALUES (1,'send',0),(2,'send',2),(3,'project',NULL),(4,'unknown',NULL)"))
+        await self.conn.execute(text("CREATE TABLE route_attempts (id int, result text, falls int, style text, notes text)"))
+        await self.conn.execute(text("""INSERT INTO route_attempts VALUES
+            (1,'send',0,'flash',NULL),
+            (2,'send',2,'unknown','один срыв, но долез'),
+            (3,'project',NULL,'unknown','долез до верха, 1 срыв'),
+            (4,'unknown',NULL,'unknown','Чистый пролаз с первой попытки')"""))
         path = Path(__file__).parents[1] / "migrations/versions/20260928_0006_attempt_outcomes.py"
         spec = importlib.util.spec_from_file_location("outcome_migration", path)
         migration = importlib.util.module_from_spec(spec)
@@ -44,6 +48,14 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
         rows = (await self.conn.execute(text("SELECT result,reached_top,clean_ascent FROM route_attempts ORDER BY id"))).all()
         self.assertEqual([tuple(row) for row in rows], [
             ("send", True, None), ("send", True, False), ("project", None, False), ("unknown", None, None)])
+        path = Path(__file__).parents[1] / "migrations/versions/20260928_0007_infer_historical_outcomes.py"
+        spec = importlib.util.spec_from_file_location("outcome_inference_migration", path)
+        migration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration)
+        await self.conn.run_sync(upgrade)
+        rows = (await self.conn.execute(text("SELECT result,reached_top,clean_ascent FROM route_attempts ORDER BY id"))).all()
+        self.assertEqual([tuple(row) for row in rows], [
+            ("send", True, True), ("send", True, False), ("project", True, False), ("unknown", True, True)])
         for sql in (
             "INSERT INTO route_attempts (id,reached_top,clean_ascent) VALUES (5,false,true)",
             "INSERT INTO route_attempts (id,reached_top,clean_ascent,falls) VALUES (6,true,true,1)",

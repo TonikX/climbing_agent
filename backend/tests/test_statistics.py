@@ -8,6 +8,7 @@ def attempt(key, sequence, result="send", style="unknown", is_test=False):
     return SimpleNamespace(id=str(sequence), route_session_key=key, sequence=sequence,
                            reached_top=result == "send", clean_ascent=result == "send",
                            style=style, is_test=is_test, attempts=1,
+                           belay="lead",
                            route_snapshot={"grade": "6B"}, route=None)
 
 
@@ -28,6 +29,7 @@ class StatisticsTest(unittest.TestCase):
         self.assertEqual(summary["redpointCount"], 0)
         self.assertEqual(summary["unknownStyleCount"], 1)
         self.assertEqual(summary["attemptsCount"], 5)
+        self.assertEqual(summary["leadAttemptsCount"], 5)
 
 
 if __name__ == "__main__":

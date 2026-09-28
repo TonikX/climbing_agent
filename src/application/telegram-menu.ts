@@ -91,7 +91,7 @@ function statisticsBack(textValue: string, extra: Array<{label: string; command:
 }
 
 function summaryLines(title: string, value: JsonRecord, subtitle?: string): string {
-  return [
+  const lines = [
     title,
     subtitle,
     "",
@@ -106,8 +106,25 @@ function summaryLines(title: string, value: JsonRecord, subtitle?: string): stri
     `❔ ${number(value.unknownStyleCount)} — стиль не указан`,
     `🔄 ${number(value.activeProjects)} проекта`,
     "",
+    "Страховка:",
+    `🧗 ${number(value.leadAttemptsCount)} — нижняя`,
+    `🪢 ${number(value.topRopeAttemptsCount)} — верхняя`,
+    ...(number(value.autoBelayAttemptsCount) ? [`🤖 ${number(value.autoBelayAttemptsCount)} — автоматическая`] : []),
+    ...(number(value.boulderingAttemptsCount) ? [`🧱 ${number(value.boulderingAttemptsCount)} — боулдеринг`] : []),
+    ...(number(value.unknownBelayAttemptsCount) ? [`❔ ${number(value.unknownBelayAttemptsCount)} — страховка не указана`] : []),
+    "",
     `Максимальная категория: ${text(value.maxGrade)}`,
-  ].filter((line) => line !== undefined).join("\n");
+  ];
+  return lines.filter((line) => line !== undefined).join("\n");
+}
+
+function styleLabel(value: unknown): string {
+  return ({ onsight: "Onsight", flash: "Flash", redpoint: "Red Point", unknown: "не указан" } as Record<string, string>)[String(value)] ?? text(value);
+}
+
+function belayLabel(value: unknown): string {
+  return ({ lead: "нижняя", top_rope: "верхняя", auto_belay: "автоматическая",
+    bouldering: "боулдеринг", unknown: "не указана" } as Record<string, string>)[String(value)] ?? text(value);
 }
 
 function routeDetailLines(title: string, routes: unknown): string {
@@ -119,10 +136,14 @@ function routeDetailLines(title: string, routes: unknown): string {
     for (const attempt of array(group.attempts)) {
       const mark = attempt.cleanAscent === true ? "✅" : attempt.reachedTop === true ? "🏁" : "🔄";
       const fact = (value: unknown) => value === true ? "да" : value === false ? "нет" : "не уточнено";
-      const outcome = `долез: ${fact(attempt.reachedTop)} · чисто: ${fact(attempt.cleanAscent)}`;
-      const details = [attempt.highPoint !== null && attempt.highPoint !== undefined ? `до ${number(attempt.highPoint)}` : "",
-        attempt.falls !== null && attempt.falls !== undefined ? `${number(attempt.falls)} срыв.` : ""].filter(Boolean).join(", ");
-      lines.push(`${mark} №${number(attempt.number)} · ${outcome}${details ? ` — ${details}` : ""}`);
+      lines.push("", `${mark} Попытка №${number(attempt.number)}`,
+        `• Долез до конца: ${fact(attempt.reachedTop)}`,
+        `• Пролез чисто: ${fact(attempt.cleanAscent)}`,
+        `• Стиль: ${styleLabel(attempt.style)}`,
+        `• Страховка: ${belayLabel(attempt.belay)}`,
+        `• Срывы: ${attempt.falls === null || attempt.falls === undefined ? "не указаны" : number(attempt.falls)}`);
+      if (attempt.highPoint !== null && attempt.highPoint !== undefined) lines.push(`• Высшая точка: ${number(attempt.highPoint)}`);
+      if (attempt.notes) lines.push(`• Комментарий: ${text(attempt.notes)}`);
     }
   }
   if (lines.length === 1) lines.push("", "Попыток пока нет.");

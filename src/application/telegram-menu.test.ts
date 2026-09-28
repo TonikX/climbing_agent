@@ -7,7 +7,7 @@ describe("Telegram journal menu", () => {
   it("shows reaching the top without presenting it as a clean ascent", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({
       active: true, routes: [{ route: { name: "Test route" }, attempts: [
-        { number: 1, reachedTop: true, cleanAscent: false, falls: 2 },
+        { number: 1, reachedTop: true, cleanAscent: false, falls: 2, style: "unknown", belay: "top_rope" },
       ] }],
     }) }));
     process.env.CLIMBING_API_URL = "http://api";
@@ -17,7 +17,10 @@ describe("Telegram journal menu", () => {
     const command = commands.find(command => command.name === "completed_routes")!;
     const result = await (command.handler as (ctx: unknown) => Promise<{text: string}>)({ senderId: "42" });
     expect(result.text).toContain("Test route");
-    expect(result.text).toContain("долез: да · чисто: нет");
+    expect(result.text).toContain("• Долез до конца: да");
+    expect(result.text).toContain("• Пролез чисто: нет");
+    expect(result.text).toContain("• Стиль: не указан");
+    expect(result.text).toContain("• Страховка: верхняя");
     expect(result.text).not.toContain("✅");
   });
 

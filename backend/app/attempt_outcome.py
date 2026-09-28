@@ -1,4 +1,4 @@
-"""Normalize independent outcome facts; never infer clean climbing from style."""
+"""Normalize outcome facts and keep climbing terms internally consistent."""
 from fastapi import HTTPException
 
 
@@ -18,6 +18,13 @@ def outcome(raw: dict, current=None) -> dict:
         top = raw["reachedTop"]
     if "cleanAscent" in raw:
         clean = raw["cleanAscent"]
+    style = raw.get("style", getattr(current, "style", "unknown"))
+    clean_style = style in ("onsight", "flash", "redpoint")
+    if clean_style:
+        if raw.get("cleanAscent") is False or (falls is not None and falls > 0):
+            raise HTTPException(422, f"Style {style} requires a clean ascent without falls")
+        clean = True
+        top = True
     if any(value is not None and type(value) is not bool for value in (top, clean)):
         raise HTTPException(422, "reachedTop and cleanAscent must be boolean or null")
     if top is False or (falls is not None and falls > 0):
