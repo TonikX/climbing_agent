@@ -48,9 +48,6 @@ const Weather = Type.Object({
   notes: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 
-const Result = Type.Union([
-  Type.Literal("send"), Type.Literal("project"), Type.Literal("attempted"), Type.Literal("unknown"),
-]);
 const Style = Type.Union([
   Type.Literal("onsight"), Type.Literal("flash"), Type.Literal("redpoint"), Type.Literal("unknown"),
 ]);
@@ -74,7 +71,8 @@ const AttemptFields = {
   falls: Type.Optional(Type.Integer({ minimum: 0 })),
   belay: Type.Optional(Belay),
   attempts: Type.Optional(Type.Integer({ minimum: 1 })),
-  result: Type.Optional(Result),
+  reachedTop: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])),
+  cleanAscent: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])),
   style: Type.Optional(Style),
   feel: Type.Optional(Feel),
   notes: Type.Optional(Type.String()),
@@ -111,7 +109,8 @@ export function createJournalTools() {
         user: User, attemptId: Type.Optional(Type.String()), useLastAttempt: Type.Optional(Type.Boolean()),
         highPoint: Type.Optional(Type.Integer({ minimum: 0 })),
         totalMoves: Type.Optional(Type.Integer({ minimum: 1 })), falls: Type.Optional(Type.Integer({ minimum: 0 })),
-        result: Type.Optional(Result), style: Type.Optional(Style), feel: Type.Optional(Feel), notes: Type.Optional(Type.String()),
+        reachedTop: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])),
+        cleanAscent: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])), style: Type.Optional(Style), feel: Type.Optional(Feel), notes: Type.Optional(Type.String()),
       }, { additionalProperties: false }),
     }),
 

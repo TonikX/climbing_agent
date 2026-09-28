@@ -30,7 +30,11 @@ class AttemptCreate(BaseModel):
     grade: str | None = None
     section_id: str | None = None
     attempts: int = Field(default=1, ge=1)
-    result: Literal["send", "project", "attempted", "unknown"] = "unknown"
+    result: Literal["send", "project", "attempted", "unknown"] = Field(
+        default="unknown", deprecated=True, description="Legacy input. Use reached_top and clean_ascent.")
+    reached_top: bool | None = None
+    clean_ascent: bool | None = None
+    falls: int | None = Field(default=None, ge=0)
     style: Literal["onsight", "flash", "redpoint", "unknown"] = "unknown"
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] = "unknown"
     feel: Literal["easy", "comfortable", "limit", "unknown"] = "unknown"
@@ -49,7 +53,8 @@ class AttemptResponse(BaseModel):
     id: str
     sequence: int
     attempts: int
-    result: str
+    reached_top: bool | None
+    clean_ascent: bool | None
     style: str
     belay: str
     feel: str

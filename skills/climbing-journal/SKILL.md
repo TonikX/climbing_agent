@@ -22,7 +22,15 @@ conversation history is not.
 - A message starting with “тест” marks every derived attempt `isTest=true`.
 - `set_climbing_test_mode` persists manual test mode. While enabled, every new attempt is test data.
 - Never invent user, location, section, route, gear, external ID, or weather data.
-- Falls, hangs, or rests mean the attempt is not a clean send.
+- Record two separate nullable facts: `reachedTop` and `cleanAscent`.
+- “Долез” / “пролез” alone means reachedTop=true, cleanAscent=null (not confirmed).
+- “Пролез чисто” means reachedTop=true, cleanAscent=true.
+- Falls, hangs, or rope assistance mean cleanAscent=false; reaching the top is independent.
+- “Долез с двумя срывами” means reachedTop=true, cleanAscent=false, falls=2.
+- “Не долез / спустился с середины” means reachedTop=false, cleanAscent=false.
+- Missing facts are null, never false by default. Do not use the legacy `result` field.
+- For corrections, send only changed facts. Use explicit null to clear an unconfirmed fact.
+- Style is independent. Never infer a clean ascent from style or reaching the top.
 - A first-attempt send is not automatically onsight or flash.
 - A clean send after previous attempts is redpoint.
 - Voice transcript is handled exactly like text; ignore transport and audio metadata.

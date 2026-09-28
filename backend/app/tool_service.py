@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.attempt_outcome import outcome
 from app.models import ExternalRef, Gear, Location, Route, RouteAttempt, Section, TrainingSession, User
 
 
@@ -225,17 +226,15 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
     attempt_number = int(await session.scalar(select(func.count(RouteAttempt.id)).where(
         RouteAttempt.training_id == training.id,
         RouteAttempt.route_session_key == route_session_key))) + 1
-    result = str(raw.get("result") or "unknown")
+    facts = outcome(raw)
     falls = raw.get("falls")
-    if falls is not None and int(falls) > 0 and result == "send":
-        result = "project"
     style = str(raw.get("style") or "unknown")
-    if result == "send" and attempt_number > 1 and style == "unknown":
+    if facts["clean_ascent"] is True and attempt_number > 1 and style == "unknown":
         style = "redpoint"
     item = RouteAttempt(
         training_id=training.id, route_id=route.id if route else None, sequence=sequence,
         route_session_key=route_session_key, attempt_number=attempt_number,
-        attempts=int(raw.get("attempts") or 1), result=result,
+        attempts=int(raw.get("attempts") or 1), **facts,
         style=style, belay=str(raw.get("belay") or "unknown"),
         feel=str(raw.get("feel") or "unknown"), notes=raw.get("notes"),
         high_point=raw.get("highPoint"), total_moves=raw.get("totalMoves"), falls=falls,
@@ -255,7 +254,7 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
 def _attempt_dict(item: RouteAttempt, route: Route | None = None, section: Section | None = None) -> dict[str, Any]:
     return {"id": item.id, "number": item.attempt_number, "routeId": item.route_id,
             "routeSessionKey": item.route_session_key, "routeSnapshot": item.route_snapshot, "belay": item.belay,
-            "attempts": item.attempts, "result": item.result, "style": item.style, "feel": item.feel,
+            "attempts": item.attempts, "reachedTop": item.reached_top, "cleanAscent": item.clean_ascent, "style": item.style, "feel": item.feel,
             "highPoint": item.high_point, "totalMoves": item.total_moves, "falls": item.falls,
             "notes": item.notes, "isTest": item.is_test, "route": _route_dict(route) if route else None,
             "sector": _section_dict(section) if section else None}
@@ -323,16 +322,19 @@ async def _append(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     item = await _attempt(session, training, area, section, raw_attempt, force_test=user.test_mode_enabled)
     previous_best = await session.scalar(select(func.max(RouteAttempt.high_point)).where(
         RouteAttempt.route_session_key == item.route_session_key, RouteAttempt.id != item.id))
+    has_clean = bool(await session.scalar(select(func.count(RouteAttempt.id)).where(
+        RouteAttempt.route_session_key == item.route_session_key,
+        RouteAttempt.clean_ascent.is_(True), RouteAttempt.is_test.is_(False))))
     snapshot = item.route_snapshot or {}
     return {
         "attemptId": item.id,
         "number": item.attempt_number,
         "route": {"name": snapshot.get("name"), "grade": snapshot.get("grade")},
-        "result": {"completed": item.result == "send", "highPoint": item.high_point,
+        "outcome": {"reachedTop": item.reached_top, "cleanAscent": item.clean_ascent, "highPoint": item.high_point,
                    "totalMoves": item.total_moves, "falls": item.falls},
         "derived": {"isNewBest": item.high_point is not None and
                     (previous_best is None or item.high_point > previous_best),
-                    "isProject": item.result == "project"},
+                    "isProject": not has_clean},
         "isTest": item.is_test,
     }
 
@@ -372,9 +374,12 @@ async def _save(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
             _norm(a.route_snapshot.get("grade")) == _norm(raw.get("grade")))]
         if merged and len(candidates) == 1:
             item = candidates[0]
-            for source, target in (("attempts", "attempts"), ("result", "result"), ("style", "style"),
+            facts = outcome(raw, item)
+            for key, value in facts.items(): setattr(item, key, value)
+            for source, target in (("attempts", "attempts"), ("falls", "falls"), ("style", "style"),
                                    ("belay", "belay"), ("feel", "feel"), ("notes", "notes")):
-                if raw.get(source) is not None: setattr(item, target, raw[source])
+                if source in raw and (raw[source] is not None or source == "falls"):
+                    setattr(item, target, raw[source])
             if "isTest" in raw or user.test_mode_enabled:
                 item.is_test = bool(raw.get("isTest", False) or user.test_mode_enabled)
         else:
@@ -423,18 +428,17 @@ async def _attempt_target(session: AsyncSession, user_id: str, p: dict[str, Any]
 async def _update_attempt(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     user = await _user(session, p["user"])
     item = await _attempt_target(session, user.id, p)
-    updated: dict[str, Any] = {}
+    facts = outcome(p, item)
+    for key, value in facts.items(): setattr(item, key, value)
+    updated: dict[str, Any] = {"reachedTop": item.reached_top, "cleanAscent": item.clean_ascent}
     mapping = {
         "highPoint": "high_point", "totalMoves": "total_moves", "falls": "falls",
-        "result": "result", "style": "style", "feel": "feel", "notes": "notes",
+        "style": "style", "feel": "feel", "notes": "notes",
     }
     for source, target in mapping.items():
         if source in p:
             setattr(item, target, p[source])
             updated[source] = p[source]
-    if item.falls is not None and item.falls > 0 and item.result == "send":
-        item.result = "project"
-        updated["result"] = "project"
     return {"success": True, "attemptId": item.id, "number": item.attempt_number, "updated": updated}
 
 
@@ -460,14 +464,14 @@ def _grade_rank(value: str | None) -> tuple[int, int, int]:
 def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
     attempts = [a for a in attempts if not a.is_test]
     sessions = {a.route_session_key or a.id for a in attempts}
-    completed = {a.route_session_key or a.id for a in attempts if a.result == "send"}
-    projects = {a.route_session_key or a.id for a in attempts if a.result == "project"} - completed
+    completed = {a.route_session_key or a.id for a in attempts if a.clean_ascent is True}
+    projects = sessions - completed
     grades = [(a.route_snapshot or {}).get("grade") or (a.route.grade if a.route else None) for a in attempts]
     max_grade = max((grade for grade in grades if grade), key=_grade_rank, default=None)
     # Count each completed route once, using its first successful ascent.
     sends: dict[str, RouteAttempt] = {}
     for attempt in sorted(attempts, key=lambda a: a.sequence):
-        if attempt.result == "send":
+        if attempt.clean_ascent is True:
             sends.setdefault(attempt.route_session_key or attempt.id, attempt)
     styles = {style: sum(a.style == style for a in sends.values())
               for style in ("onsight", "flash", "redpoint", "unknown")}
@@ -475,6 +479,8 @@ def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
         "routesCount": len(sessions),
         "attemptsCount": sum(a.attempts for a in attempts),
         "completedRoutes": len(completed),
+        "reachedTopRoutes": len({a.route_session_key or a.id for a in attempts if a.reached_top is True}),
+        "unknownCleanRoutes": len({a.route_session_key or a.id for a in attempts if a.clean_ascent is None} - completed),
         "activeProjects": len(projects),
         "onsightCount": styles["onsight"],
         "flashCount": styles["flash"],
@@ -615,11 +621,12 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
             if key not in latest or attempt.sequence > latest[key].sequence:
                 latest[key] = attempt
         limit = min(int(p.get("limit") or 10), 50)
+        clean_keys = {a.route_session_key or a.id for a in attempts if a.clean_ascent is True}
         result["projects"] = [
             {"route": {"name": (a.route_snapshot or {}).get("name"),
                        "grade": (a.route_snapshot or {}).get("grade")},
              "highPoint": a.high_point, "totalMoves": a.total_moves, "falls": a.falls}
-            for a in latest.values() if a.result == "project"
+            for key, a in latest.items() if key not in clean_keys
         ][:limit]
     elif scope == "grades":
         grouped: dict[str, list[RouteAttempt]] = {}
@@ -653,7 +660,7 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
             for period, values in sorted(months.items(), reverse=True)[:6]
         ]
     elif scope == "records":
-        completed = [attempt for attempt in attempts if attempt.result == "send"]
+        completed = [attempt for attempt in attempts if attempt.clean_ascent is True]
         completed_grades = [(attempt.route_snapshot or {}).get("grade") or
                             (attempt.route.grade if attempt.route else None) for attempt in completed]
         result["records"] = {

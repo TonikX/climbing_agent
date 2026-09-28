@@ -4,6 +4,23 @@ import { registerTelegramMenu } from "./telegram-menu.js";
 describe("Telegram journal menu", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it("shows reaching the top without presenting it as a clean ascent", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      active: true, routes: [{ route: { name: "Test route" }, attempts: [
+        { number: 1, reachedTop: true, cleanAscent: false, falls: 2 },
+      ] }],
+    }) }));
+    process.env.CLIMBING_API_URL = "http://api";
+    process.env.CLIMBING_API_KEY = "test-key";
+    const commands: Array<Record<string, unknown>> = [];
+    registerTelegramMenu({ registerCommand: (command: unknown) => commands.push(command as Record<string, unknown>) } as never);
+    const command = commands.find(command => command.name === "completed_routes")!;
+    const result = await (command.handler as (ctx: unknown) => Promise<{text: string}>)({ senderId: "42" });
+    expect(result.text).toContain("Test route");
+    expect(result.text).toContain("долез: да · чисто: нет");
+    expect(result.text).not.toContain("✅");
+  });
+
   it("registers a journal command with direct action buttons", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,

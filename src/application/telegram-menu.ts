@@ -20,7 +20,7 @@ type JournalState = { active: boolean; testMode: boolean };
 function menuButtons(active: boolean, testMode: boolean) {
   const buttons = active ? [
     { label: "🎙 Ещё попытка", action: { type: "command" as const, command: "/another_attempt" } },
-    { label: "✅ Пройденные трассы", action: { type: "command" as const, command: "/completed_routes" } },
+    { label: "🏁 Трассы до конца", action: { type: "command" as const, command: "/completed_routes" } },
     { label: "📊 Статистика", action: { type: "command" as const, command: "/stats_menu" } },
     { label: "✅ Завершить тренировку", action: { type: "command" as const, command: "/finish_training" } },
   ] : [
@@ -97,7 +97,9 @@ function summaryLines(title: string, value: JsonRecord, subtitle?: string): stri
     "",
     `${number(value.routesCount)} трасс · ${number(value.attemptsCount)} попыток`,
     "",
-    `✅ ${number(value.completedRoutes)} пройдено`,
+    `🏁 ${number(value.reachedTopRoutes)} — долез до конца`,
+    `✅ ${number(value.completedRoutes)} — пролез чисто`,
+    `❓ ${number(value.unknownCleanRoutes)} — чистота не уточнена`,
     `👁 ${number(value.onsightCount)} Onsight`,
     `⚡ ${number(value.flashCount)} Flash`,
     `🎯 ${number(value.redpointCount)} Red Point`,
@@ -115,11 +117,12 @@ function routeDetailLines(title: string, routes: unknown): string {
     const section = record(group.section);
     lines.push("", `${text(section.name, "Без сектора")} · ${text(route.name, "Без названия")} ${text(route.grade, "")}`.trim());
     for (const attempt of array(group.attempts)) {
-      const resultValue = text(attempt.result, "unknown");
-      const mark = resultValue === "send" ? "✅" : resultValue === "project" ? "🔄" : "•";
+      const mark = attempt.cleanAscent === true ? "✅" : attempt.reachedTop === true ? "🏁" : "🔄";
+      const fact = (value: unknown) => value === true ? "да" : value === false ? "нет" : "не уточнено";
+      const outcome = `долез: ${fact(attempt.reachedTop)} · чисто: ${fact(attempt.cleanAscent)}`;
       const details = [attempt.highPoint !== null && attempt.highPoint !== undefined ? `до ${number(attempt.highPoint)}` : "",
         attempt.falls !== null && attempt.falls !== undefined ? `${number(attempt.falls)} срыв.` : ""].filter(Boolean).join(", ");
-      lines.push(`${mark} №${number(attempt.number)}${details ? ` — ${details}` : ""}`);
+      lines.push(`${mark} №${number(attempt.number)} · ${outcome}${details ? ` — ${details}` : ""}`);
     }
   }
   if (lines.length === 1) lines.push("", "Попыток пока нет.");
@@ -137,13 +140,13 @@ export function formatStatisticsResult(scope: string, raw: unknown): string {
   }
   if (scope === "progress") {
     const lines = ["📈 Прогресс за последние месяцы"];
-    for (const period of array(result.periods)) lines.push("", `${text(period.period)}: ${number(period.trainingsCount)} трен. · ${number(period.completedRoutes)} пройдено · max ${text(period.maxGrade)}`);
+    for (const period of array(result.periods)) lines.push("", `${text(period.period)}: ${number(period.trainingsCount)} трен. · ${number(period.reachedTopRoutes)} до конца · ${number(period.completedRoutes)} чисто · max ${text(period.maxGrade)}`);
     if (lines.length === 1) lines.push("", "Данных пока нет.");
     return lines.join("\n");
   }
   if (scope === "grades") {
     const lines = ["🎯 Статистика по категориям"];
-    for (const grade of array(result.grades)) lines.push(`${text(grade.grade)} — ${number(grade.routesCount)} трасс · ${number(grade.attemptsCount)} попыток · ✅ ${number(grade.completedRoutes)}`);
+    for (const grade of array(result.grades)) lines.push(`${text(grade.grade)} — ${number(grade.routesCount)} трасс · ${number(grade.attemptsCount)} попыток · 🏁 ${number(grade.reachedTopRoutes)} до конца · ✅ ${number(grade.completedRoutes)} чисто`);
     if (lines.length === 1) lines.push("", "Данных пока нет.");
     return lines.join("\n");
   }
@@ -151,7 +154,7 @@ export function formatStatisticsResult(scope: string, raw: unknown): string {
     const lines = ["📍 Статистика по локациям"];
     for (const item of array(result.locations)) {
       const location = record(item.location);
-      lines.push(`${text(location.name, "Без локации")} — ${number(item.trainingsCount)} трен. · ${number(item.routesCount)} трасс · ✅ ${number(item.completedRoutes)}`);
+      lines.push(`${text(location.name, "Без локации")} — ${number(item.trainingsCount)} трен. · ${number(item.routesCount)} трасс · 🏁 ${number(item.reachedTopRoutes)} до конца · ✅ ${number(item.completedRoutes)} чисто`);
     }
     if (lines.length === 1) lines.push("", "Данных пока нет.");
     return lines.join("\n");
@@ -168,10 +171,10 @@ export function formatStatisticsResult(scope: string, raw: unknown): string {
   }
   if (scope === "records") {
     const records = record(result.records);
-    return ["🏆 Рекорды", "", `Высшая пройденная категория: ${text(records.highestCompletedGrade)}`,
+    return ["🏆 Рекорды", "", `Высшая категория чистого пролаза: ${text(records.highestCompletedGrade)}`,
       `Высший Flash: ${text(records.highestFlashGrade)}`, `Высший Red Point: ${text(records.highestRedpointGrade)}`, "",
       `Тренировок: ${number(records.totalTrainings)}`, `Попыток: ${number(records.totalAttempts)}`,
-      `Пройдено трасс: ${number(records.totalCompletedRoutes)}`].join("\n");
+      `Чисто пройдено трасс: ${number(records.totalCompletedRoutes)}`].join("\n");
   }
   const titles: Record<string, string> = {
     week: "📅 Эта неделя", month: "🗓 Этот месяц", grade: `🎯 Категория ${text(result.grade, "")}`,
@@ -242,7 +245,7 @@ async function showCurrent(ctx: PluginCommandContext): Promise<PluginCommandResu
       `${text(location.name, "Локация не указана")} · ${duration(result.durationMinutes)}`,
     ), [
       { label: "📋 Все попытки", command: "/current_training_details" },
-      { label: "✅ Пройденные трассы", command: "/completed_routes" },
+      { label: "🏁 Трассы до конца", command: "/completed_routes" },
       { label: "🔄 Проекты", command: "/project_stats" },
     ]);
   } catch (error) {
@@ -255,9 +258,9 @@ async function showCurrentDetails(ctx: PluginCommandContext, completedOnly = fal
     const result = record(await currentTraining.execute({ user: telegramUser(ctx), detail: "full" }));
     if (result.active === false) return statisticsBack("Сейчас активной тренировки нет.");
     const routes = completedOnly ? array(result.routes).filter(group =>
-      array(group.attempts).some(attempt => attempt.result === "send")) : result.routes;
-    return statisticsBack(completedOnly && array(routes).length === 0 ? "Пройденных трасс пока нет." :
-      routeDetailLines(completedOnly ? "✅ Пройденные трассы текущей тренировки" : "📋 Все попытки текущей тренировки", routes),
+      array(group.attempts).some(attempt => attempt.reachedTop === true)) : result.routes;
+    return statisticsBack(completedOnly && array(routes).length === 0 ? "Пока нет трасс, на которых подтверждено достижение конца." :
+      routeDetailLines(completedOnly ? "🏁 Трассы до конца текущей тренировки" : "📋 Все попытки текущей тренировки", routes),
       [{ label: "← Текущая тренировка", command: "/current_training" }]);
   } catch (error) {
     return statisticsBack(`Не удалось загрузить попытки: ${error instanceof Error ? error.message : String(error)}`);
@@ -354,7 +357,7 @@ async function finish(ctx: PluginCommandContext): Promise<PluginCommandResult> {
 export function registerTelegramMenu(api: OpenClawPluginApi): void {
   api.registerCommand({
     name: "completed_routes",
-    description: "Пройденные трассы текущей тренировки",
+    description: "Трассы, на которых долез до конца",
     channels: ["telegram"],
     acceptsArgs: false,
     handler: (ctx) => showCurrentDetails(ctx, true),

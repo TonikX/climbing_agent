@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, with_loader_criteria
 
+from app.attempt_outcome import outcome
 from app.models import ExternalRef, RouteAttempt, TrainingSession, TrainingStatus, User
 from app.schemas import AttemptCreate, FinishTraining, TrainingCreate, UserResolveRequest
 
@@ -84,12 +85,17 @@ async def append_attempt(
     last_sequence = await session.scalar(
         select(func.coalesce(func.max(RouteAttempt.sequence), 0)).where(RouteAttempt.training_id == training_id)
     )
+    raw = command.model_dump(exclude_unset=True)
+    for old, new in (("reached_top", "reachedTop"), ("clean_ascent", "cleanAscent")):
+        if old in raw: raw[new] = raw.pop(old)
+    facts = outcome(raw)
     attempt = RouteAttempt(
         training_id=training_id,
         route_id=command.route_id,
         sequence=int(last_sequence) + 1,
         attempts=command.attempts,
-        result=command.result,
+        **facts,
+        falls=command.falls,
         style=command.style,
         belay=command.belay,
         feel=command.feel,

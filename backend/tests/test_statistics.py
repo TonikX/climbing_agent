@@ -6,7 +6,8 @@ from app.tool_service import _grade_rank, _summary
 
 def attempt(key, sequence, result="send", style="unknown", is_test=False):
     return SimpleNamespace(id=str(sequence), route_session_key=key, sequence=sequence,
-                           result=result, style=style, is_test=is_test, attempts=1,
+                           reached_top=result == "send", clean_ascent=result == "send",
+                           style=style, is_test=is_test, attempts=1,
                            route_snapshot={"grade": "6B"}, route=None)
 
 

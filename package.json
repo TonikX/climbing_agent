@@ -1,6 +1,6 @@
 {
   "name": "openclaw-plugin-climbing-journal",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "type": "module",
   "private": true,
   "scripts": {

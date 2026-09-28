@@ -161,6 +161,9 @@ class RouteAttempt(Base):
     __tablename__ = "route_attempts"
     __table_args__ = (
         CheckConstraint("result IN ('send', 'project', 'attempted', 'unknown')", name="ck_attempt_result"),
+        CheckConstraint("clean_ascent IS NOT TRUE OR reached_top IS TRUE", name="ck_attempt_clean_top"),
+        CheckConstraint("clean_ascent IS NOT TRUE OR falls IS NULL OR falls = 0", name="ck_attempt_clean_falls"),
+        CheckConstraint("reached_top IS NOT FALSE OR clean_ascent IS FALSE", name="ck_attempt_no_top"),
         CheckConstraint("style IN ('onsight', 'flash', 'redpoint', 'unknown')", name="ck_attempt_style"),
         CheckConstraint("belay IN ('lead', 'top_rope', 'auto_belay', 'bouldering', 'unknown')", name="ck_attempt_belay"),
         CheckConstraint("feel IN ('easy', 'comfortable', 'limit', 'unknown')", name="ck_attempt_feel"),
@@ -179,6 +182,8 @@ class RouteAttempt(Base):
     sequence: Mapped[int] = mapped_column(Integer)
     attempts: Mapped[int] = mapped_column(Integer, default=1)
     result: Mapped[str] = mapped_column(String(20), default="unknown")
+    reached_top: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    clean_ascent: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     style: Mapped[str] = mapped_column(String(20), default="unknown")
     belay: Mapped[str] = mapped_column(String(20), default="unknown")
     feel: Mapped[str] = mapped_column(String(20), default="unknown")

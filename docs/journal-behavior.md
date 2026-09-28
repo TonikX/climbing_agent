@@ -132,7 +132,7 @@ Merge summary data with the existing active training.
 Use summary information to fill or refine:
 
 - attempts
-- result
+- reachedTop / cleanAscent
 - style
 - feel
 - duration
@@ -196,30 +196,19 @@ than becoming permanent catalogue entities.
 Do not overwrite an existing route grade merely because another value seems
 more likely.
 
-## Attempt result
+## Attempt outcome
 
-Use:
+Each attempt stores nullable `reachedTop` (reached the end) and `cleanAscent`
+(no falls, hangs or rope assistance). Clean implies reaching the end. Not
+reaching the end implies not clean. A positive falls count prevents clean=true.
+“Долез” alone confirms only reachedTop. Unknown remains null.
+Style does not prove clean climbing. Projects are route sessions with no
+confirmed clean ascent. Statistics count styles and records only for clean=true.
 
-- send — route was climbed cleanly
-- project — unfinished route the user is actively working on
-- attempted — attempted but not clearly described as a project
-- unknown — result is unclear
-
-If the user says:
-
-- with hangs
-- with rests
-- took on the rope
-- fell
-- didn't finish
-- не пролез
-- с зависаниями
-
-do not mark it as a clean send.
 
 ## Style
 
-Style is separate from result.
+Style is separate from both outcome facts.
 
 Use:
 
@@ -235,13 +224,13 @@ to distinguish them.
 
 Examples:
 
-"с первой" -> send, style unknown
+"с первой" -> reachedTop=true, cleanAscent=null, style unknown
 
-"он-сайт" -> send + onsight
+"он-сайт" -> style=onsight; record cleanAscent only when clean climbing is confirmed
 
-"флеш" -> send + flash
+"флеш" -> style=flash; record cleanAscent only when clean climbing is confirmed
 
-"со второй" -> send + redpoint
+"со второй чисто" -> reachedTop=true, cleanAscent=true, style=redpoint
 
 ## Belay / climbing mode
 
