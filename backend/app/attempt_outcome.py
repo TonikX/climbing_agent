@@ -1,5 +1,17 @@
 """Normalize outcome facts and keep climbing terms internally consistent."""
+import re
+
 from fastapi import HTTPException
+
+
+def has_nonclean_evidence(raw: dict, current=None) -> bool:
+    falls = raw.get("falls", getattr(current, "falls", None))
+    notes = raw.get("notes", getattr(current, "notes", None)) or ""
+    # Remove explicit negations before looking for a fall, hang or rope rest.
+    normalized = re.sub(
+        r"без\s+(?:срыв|завис)\w*(?:\s+и\s+(?:срыв|завис)\w*)?", "", str(notes).lower())
+    return bool((falls is not None and falls > 0) or re.search(
+        r"срыв|сорв|завис|повис|с\s+перерыв", normalized))
 
 
 def outcome(raw: dict, current=None) -> dict:
@@ -20,16 +32,13 @@ def outcome(raw: dict, current=None) -> dict:
         clean = raw["cleanAscent"]
     style = raw.get("style", getattr(current, "style", "unknown"))
     clean_style = style in ("onsight", "flash", "redpoint")
+    nonclean = has_nonclean_evidence(raw, current)
     if clean_style:
-        if raw.get("cleanAscent") is False or (falls is not None and falls > 0):
-            raise HTTPException(422, f"Style {style} requires a clean ascent without falls")
-        clean = True
+        clean = False if nonclean or raw.get("cleanAscent") is False else True
         top = True
     if any(value is not None and type(value) is not bool for value in (top, clean)):
         raise HTTPException(422, "reachedTop and cleanAscent must be boolean or null")
-    if top is False or (falls is not None and falls > 0):
-        if raw.get("cleanAscent") is True:
-            raise HTTPException(422, "A clean ascent requires reaching the top without falls")
+    if top is False or nonclean:
         clean = False
     if clean is True:
         top = True

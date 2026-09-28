@@ -13,9 +13,10 @@ class OutcomeTest(unittest.TestCase):
         self.assertEqual(outcome({"reachedTop": False})["clean_ascent"], False)
         self.assertEqual(outcome({"reachedTop": True, "falls": 2})["clean_ascent"], False)
         self.assertEqual(outcome({"result": "send", "style": "flash"})["clean_ascent"], True)
-        for raw in ({"cleanAscent": True, "falls": 1}, {"cleanAscent": True, "reachedTop": False},
-                    {"style": "redpoint", "falls": 1}, {"style": "onsight", "cleanAscent": False},
-                    {"reachedTop": "yes"}):
+        self.assertFalse(outcome({"style": "redpoint", "notes": "Долез с перерывом"})["clean_ascent"])
+        self.assertFalse(outcome({"style": "flash", "falls": 1})["clean_ascent"])
+        self.assertTrue(outcome({"style": "onsight", "notes": "Без срывов и зависаний"})["clean_ascent"])
+        for raw in ({"reachedTop": "yes"},):
             with self.assertRaises(HTTPException):
                 outcome(raw)
 
