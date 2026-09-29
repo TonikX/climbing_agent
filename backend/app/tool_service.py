@@ -459,12 +459,14 @@ async def _delete_attempt(session: AsyncSession, p: dict[str, Any]) -> dict[str,
     return {"success": True, "deletedAttemptId": attempt_id, "currentRouteAttempts": remaining}
 
 
-def _grade_rank(value: str | None) -> tuple[int, int, int]:
+def _grade_rank(value: str | None) -> tuple[int, int, int, int]:
     if not value:
-        return (-1, -1, -1)
+        return (-1, -1, -1, 0)
     grades = re.findall(r"(\d+)([ABC]?)(\+?)", value.strip().upper())
-    return max(((int(number), "ABC".find(letter) if letter else -1, int(bool(plus)))
-                for number, letter, plus in grades), default=(-1, -1, -1))
+    ranks = {(int(number), "ABC".find(letter) if letter else -1, int(bool(plus)))
+             for number, letter, plus in grades}
+    # A split grade lies below its upper boundary, above its lower boundary.
+    return (*max(ranks, default=(-1, -1, -1)), -1 if len(ranks) > 1 else 0)
 
 
 def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:

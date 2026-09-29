@@ -18,6 +18,20 @@ def attempt(key, sequence, result="send", style="unknown", is_test=False):
 class StatisticsTest(unittest.TestCase):
     def test_split_grade_is_not_concatenated_into_a_two_digit_grade(self):
         self.assertLess(_grade_rank("6B/6B+"), _grade_rank("7A"))
+        ordered = ["6B", "6B/6B+", "6B+", "6C"]
+        self.assertEqual(sorted(reversed(ordered), key=_grade_rank), ordered)
+        self.assertEqual(_grade_rank("6B+/6B"), _grade_rank("6B/6B+"))
+        self.assertEqual(_grade_rank("6B/6B"), _grade_rank("6B"))
+
+    def test_split_grade_does_not_override_higher_clean_maximum(self):
+        attempts = [graded("a", 1, "6B+", clean=True), graded("b", 2, "6B/6B+", clean=True)]
+        for values in (attempts, list(reversed(attempts))):
+            summary = _summary(values)
+            for key in ("maxAttemptedGrade", "maxReachedTopGrade", "maxCompletedGrade"):
+                self.assertEqual(summary[key], "6B+")
+            self.assertEqual([g["grade"] for g in _grade_breakdown(values)], ["6B+", "6B/6B+"])
+        self.assertEqual(_comparison({"maxCompletedGrade": "6B+"},
+                                     {"maxCompletedGrade": "6B/6B+"})["maxCompletedGrade"], "up")
 
     def test_styles_count_first_success_per_route_and_exclude_projects_and_tests(self):
         summary = _summary([
