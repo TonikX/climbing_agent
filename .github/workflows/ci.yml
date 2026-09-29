@@ -19,6 +19,18 @@ jobs:
       - run: npm run plugin:validate
   api:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: climbing_journal
+          POSTGRES_USER: climbing
+          POSTGRES_PASSWORD: test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U climbing -d climbing_journal"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,4 +44,5 @@ jobs:
           PYTHONPATH: backend
           INTERNAL_API_KEY: test-key
           DB_PASSWORD: test-password
+          DB_HOST: localhost
       - run: cp .env.example .env && docker compose config --quiet

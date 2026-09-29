@@ -1,5 +1,52 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { registerTelegramMenu } from "./telegram-menu.js";
+import { formatStatisticsResult, registerTelegramMenu } from "./telegram-menu.js";
+
+describe("statistics formatting", () => {
+  const previous = { dateFrom: "2026-08-01", period: "2026-08", trainingsCount: 6,
+    completedRoutes: 13, routesCount: 24, completionRate: 0.54,
+    attemptsPerCompletedRoute: 4.2, maxCompletedGrade: "6B+" };
+  const current = { dateFrom: "2026-09-01", period: "2026-09", trainingsCount: 8,
+    durationMinutes: 1180, completedRoutes: 18, routesCount: 31, attemptsCount: 67,
+    completionRate: 0.58, attemptsPerRoute: 2.16, attemptsPerCompletedRoute: 3.7,
+    maxAttemptedGrade: "7A", maxReachedTopGrade: "6C+", maxCompletedGrade: "6C",
+    comparison: { trainingsCount: "up", completedRoutes: "up", completionRate: "up",
+      attemptsPerCompletedRoute: "down", maxCompletedGrade: "up" } };
+
+  it("shows month maxima, efficiency, bars and previous month", () => {
+    const output = formatStatisticsResult("month", { ...current, previousPeriod: previous,
+      grades: [{ grade: "6C", completionRate: 0.375, completedRoutes: 3, routesCount: 8 }] });
+    for (const expected of ["Сентябрь 2026", "19 ч 40 мин", "58%", "2.2", "█", "░", "3/8",
+      "пробовал: 7A", "дошёл до конца: 6C+", "чисто: 6C", "Август 2026",
+      "↑ максимум чистого пролаза: 6B+ → 6C", "↓ попыток на чистый пролаз: 4.2 → 3.7"])
+      expect(output).toContain(expected);
+  });
+
+  it("emphasizes completed route ratio rather than attempt ratio", () => {
+    const output = formatStatisticsResult("grades", { grades: [{ grade: "6C", completionRate: 0.375,
+      completedRoutes: 3, routesCount: 8, attemptsCount: 19 }] });
+    expect(output).toContain("38%");
+    expect(output).toContain("3/8");
+    expect(output).toContain("19 попыток");
+    expect(output).not.toContain("3/19");
+  });
+
+  it("renders chronological trends with backend arrows", () => {
+    const output = formatStatisticsResult("progress", { periods: [current, previous] });
+    expect(output.indexOf("Авг")).toBeLessThan(output.indexOf("Сен"));
+    for (const expected of ["Максимальная чистая категория:", "Чистые пролазы:", "Закрыто трасс:",
+      "Тренировки:", "█", "6C ↑", "58% ↑", "Последние месяцы:", "4.2 → 3.7"])
+      expect(output).toContain(expected);
+    expect(output).not.toContain("7A");
+  });
+
+  it("handles empty periods and missing grades without arrows", () => {
+    expect(formatStatisticsResult("progress", { periods: [] })).toContain("Данных пока нет");
+    const output = formatStatisticsResult("progress", { periods: [
+      { ...current, maxCompletedGrade: null, comparison: { maxCompletedGrade: null } }, previous] });
+    expect(output).toContain("максимум чистого пролаза: 6B+ → —");
+    expect(output).not.toContain("↑ максимум чистого пролаза");
+  });
+});
 
 describe("Telegram journal menu", () => {
   afterEach(() => vi.unstubAllGlobals());

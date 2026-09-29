@@ -113,7 +113,7 @@ function summaryLines(title: string, value: JsonRecord, subtitle?: string): stri
     ...(number(value.boulderingAttemptsCount) ? [`🧱 ${number(value.boulderingAttemptsCount)} — боулдеринг`] : []),
     ...(number(value.unknownBelayAttemptsCount) ? [`❔ ${number(value.unknownBelayAttemptsCount)} — страховка не указана`] : []),
     "",
-    `Максимальная категория: ${text(value.maxGrade)}`,
+    ...maximumLines(value),
   ];
   return lines.filter((line) => line !== undefined).join("\n");
 }
@@ -150,8 +150,78 @@ function routeDetailLines(title: string, routes: unknown): string {
   return lines.join("\n");
 }
 
+function maximumLines(value: JsonRecord): string[] {
+  return ["Максимум:", `🧗 пробовал: ${text(value.maxAttemptedGrade ?? value.maxGrade)}`,
+    `🏁 дошёл до конца: ${text(value.maxReachedTopGrade)}`, `✅ чисто: ${text(value.maxCompletedGrade)}`];
+}
+
+function percent(value: unknown): string {
+  return typeof value === "number" ? `${Math.round(value * 100)}%` : "—";
+}
+
+function decimal(value: unknown): string {
+  return typeof value === "number" ? value.toFixed(1) : "—";
+}
+
+function bar(value: number): string {
+  const filled = Math.round(Math.max(0, Math.min(1, value)) * 8);
+  return "█".repeat(filled) + "░".repeat(8 - filled);
+}
+
+function monthLabel(value: unknown, short = false): string {
+  const match = /^(\d{4})-(\d{2})/.exec(text(value, ""));
+  if (!match || Number(match[2]) < 1 || Number(match[2]) > 12) return "Период";
+  const name = new Intl.DateTimeFormat("ru-RU", { month: short ? "short" : "long", timeZone: "UTC" })
+    .format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1)));
+  return `${name[0].toUpperCase()}${name.slice(1)} ${match[1]}`;
+}
+
+function arrow(comparison: JsonRecord, key: string): string {
+  return ({ up: "↑", down: "↓", equal: "=" } as Record<string, string>)[String(comparison[key])] ?? "";
+}
+
+function comparisonLines(current: JsonRecord, previous: JsonRecord): string[] {
+  const changes = record(current.comparison);
+  const metrics: Array<[string, string, (value: unknown) => string]> = [
+    ["trainingsCount", "тренировок", value => String(number(value))],
+    ["completedRoutes", "чистых пролазов", value => String(number(value))],
+    ["maxCompletedGrade", "максимум чистого пролаза", value => text(value)],
+    ["completionRate", "доля закрытых трасс", percent],
+    ["attemptsPerCompletedRoute", "попыток на чистый пролаз", decimal],
+  ];
+  return metrics.map(([key, label, format]) =>
+    `${arrow(changes, key)} ${label}: ${format(previous[key])} → ${format(current[key])}`.trim());
+}
+
 export function formatStatisticsResult(scope: string, raw: unknown): string {
   const result = record(raw);
+  if (scope === "month") {
+    const lines = [`🗓 ${monthLabel(result.dateFrom)}`, "",
+      `${number(result.trainingsCount)} тренировок · ${duration(result.durationMinutes)}`,
+      `${number(result.routesCount)} трасс · ${number(result.attemptsCount)} попыток`, "",
+      `🏁 ${number(result.reachedTopRoutes)} — дошёл до конца`,
+      `✅ ${number(result.completedRoutes)} — пролез чисто`,
+      `❓ ${number(result.unknownCleanRoutes)} — чистота не уточнена`,
+      `🔄 ${number(result.activeProjects)} — проекты`, "",
+      `👁 ${number(result.onsightCount)} Onsight · ⚡ ${number(result.flashCount)} Flash · 🎯 ${number(result.redpointCount)} Red Point`,
+      `❔ ${number(result.unknownStyleCount)} — стиль не указан`,
+      `Страховка (попытки): нижняя ${number(result.leadAttemptsCount)} · верхняя ${number(result.topRopeAttemptsCount)}`,
+      `Автоматическая ${number(result.autoBelayAttemptsCount)} · боулдеринг ${number(result.boulderingAttemptsCount)} · не указана ${number(result.unknownBelayAttemptsCount)}`,
+      "", "Эффективность:", `✅ ${percent(result.completionRate)} трасс закрыто`,
+      `🎯 ${decimal(result.attemptsPerRoute)} попытки на трассу`,
+      `🏆 ${decimal(result.attemptsPerCompletedRoute)} попытки на чистый пролаз`, "", "Категории:"];
+    const grades = array(result.grades);
+    for (const grade of grades) lines.push(`${text(grade.grade)} ${bar(number(grade.completionRate))} ${number(grade.completedRoutes)}/${number(grade.routesCount)}`);
+    if (!grades.length) lines.push("Данных пока нет.");
+    lines.push("", ...maximumLines(result));
+    const previous = record(result.previousPeriod);
+    if (result.previousPeriod) {
+      lines.push("", `По сравнению с ${monthLabel(previous.dateFrom)} (полный месяц):`);
+      if (!number(previous.trainingsCount)) lines.push("В предыдущем месяце нет нетестовых данных.");
+      else lines.push(...comparisonLines(result, previous));
+    }
+    return lines.join("\n");
+  }
   if (scope === "last_training") {
     const training = record(result.training);
     if (!result.training) return "Завершённых тренировок пока нет.";
@@ -160,14 +230,27 @@ export function formatStatisticsResult(scope: string, raw: unknown): string {
       `${text(training.date)} · ${text(location.name, "Локация не указана")} · ${duration(training.durationMinutes)}`);
   }
   if (scope === "progress") {
-    const lines = ["📈 Прогресс за последние месяцы"];
-    for (const period of array(result.periods)) lines.push("", `${text(period.period)}: ${number(period.trainingsCount)} трен. · ${number(period.reachedTopRoutes)} до конца · ${number(period.completedRoutes)} чисто · max ${text(period.maxGrade)}`);
-    if (lines.length === 1) lines.push("", "Данных пока нет.");
+    const periods = array(result.periods).slice().reverse();
+    const lines = ["📈 Прогресс"];
+    if (!periods.length) return lines.concat("", "Данных пока нет.").join("\n");
+    const largest = Math.max(1, ...periods.map(p => number(p.completedRoutes)));
+    const trends: Array<[string, string, (p: JsonRecord) => string]> = [
+      ["Максимальная чистая категория:", "maxCompletedGrade", p => text(p.maxCompletedGrade)],
+      ["Чистые пролазы:", "completedRoutes", p => `${bar(number(p.completedRoutes) / largest)} ${number(p.completedRoutes)}`],
+      ["Закрыто трасс:", "completionRate", p => percent(p.completionRate)],
+      ["Тренировки:", "trainingsCount", p => String(number(p.trainingsCount))],
+    ];
+    for (const [title, key, format] of trends) {
+      lines.push("", title);
+      for (const period of periods) lines.push(`${monthLabel(period.period, true)}  ${format(period)} ${arrow(record(period.comparison), key)}`.trim());
+    }
+    if (periods.length > 1) lines.push("", "Последние месяцы:",
+      ...comparisonLines(periods[periods.length - 1], periods[periods.length - 2]));
     return lines.join("\n");
   }
   if (scope === "grades") {
     const lines = ["🎯 Статистика по категориям"];
-    for (const grade of array(result.grades)) lines.push(`${text(grade.grade)} — ${number(grade.routesCount)} трасс · ${number(grade.attemptsCount)} попыток · 🏁 ${number(grade.reachedTopRoutes)} до конца · ✅ ${number(grade.completedRoutes)} чисто`);
+    for (const grade of array(result.grades)) lines.push(`${text(grade.grade)}  ✅ ${percent(grade.completionRate)} · ${number(grade.completedRoutes)}/${number(grade.routesCount)} · ${number(grade.attemptsCount)} попыток`);
     if (lines.length === 1) lines.push("", "Данных пока нет.");
     return lines.join("\n");
   }

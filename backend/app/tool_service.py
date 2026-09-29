@@ -475,6 +475,10 @@ def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
     projects = sessions - completed
     grades = [(a.route_snapshot or {}).get("grade") or (a.route.grade if a.route else None) for a in attempts]
     max_grade = max((grade for grade in grades if grade), key=_grade_rank, default=None)
+    def session_max(keys):
+        return max((grade for a, grade in zip(attempts, grades)
+                    if grade and (a.route_session_key or a.id) in keys), key=_grade_rank, default=None)
+    attempts_count = sum(a.attempts for a in attempts)
     # Count each completed route once, using its first successful ascent.
     sends: dict[str, RouteAttempt] = {}
     for attempt in sorted(attempts, key=lambda a: a.sequence):
@@ -484,7 +488,10 @@ def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
               for style in ("onsight", "flash", "redpoint", "unknown")}
     return {
         "routesCount": len(sessions),
-        "attemptsCount": sum(a.attempts for a in attempts),
+        "attemptsCount": attempts_count,
+        "completionRate": len(completed) / len(sessions) if sessions else 0,
+        "attemptsPerRoute": attempts_count / len(sessions) if sessions else None,
+        "attemptsPerCompletedRoute": attempts_count / len(completed) if completed else None,
         "completedRoutes": len(completed),
         "reachedTopRoutes": len(reached),
         "unknownCleanRoutes": len({a.route_session_key or a.id for a in attempts if a.clean_ascent is None} - completed),
@@ -499,6 +506,9 @@ def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
         "boulderingAttemptsCount": sum(a.attempts for a in attempts if a.belay == "bouldering"),
         "unknownBelayAttemptsCount": sum(a.attempts for a in attempts if a.belay == "unknown"),
         "maxGrade": max_grade,
+        "maxAttemptedGrade": max_grade,
+        "maxReachedTopGrade": session_max(reached),
+        "maxCompletedGrade": session_max(completed),
     }
 
 
@@ -512,6 +522,51 @@ def _duration_minutes(training: TrainingSession) -> int | None:
         started = started.replace(tzinfo=UTC)
     end = training.completed_at or datetime.now(UTC)
     return max(0, int((end - started).total_seconds() // 60))
+
+
+def _period_summary(rows: list[tuple[TrainingSession, RouteAttempt]]) -> dict[str, Any]:
+    rows = [(t, a) for t, a in rows if not a.is_test]
+    trainings = {t.id: t for t, _ in rows}
+    durations = [value for t in trainings.values() if (value := _duration_minutes(t)) is not None]
+    return {"trainingsCount": len(trainings), "durationMinutes": sum(durations),
+            **_summary([a for _, a in rows])}
+
+
+def _grade_breakdown(attempts: list[RouteAttempt]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[RouteAttempt]] = {}
+    for a in attempts:
+        if a.is_test:
+            continue
+        grade = (a.route_snapshot or {}).get("grade") or (a.route.grade if a.route else None)
+        grouped.setdefault(grade or "Без категории", []).append(a)
+    return [{"grade": grade, **_summary(values)} for grade, values in
+            sorted(grouped.items(), key=lambda item: _grade_rank(item[0]), reverse=True)]
+
+
+def _comparison(current: dict, previous: dict) -> dict[str, str | None]:
+    changes = {}
+    for key in ("trainingsCount", "completedRoutes", "completionRate",
+                "attemptsPerCompletedRoute", "maxCompletedGrade"):
+        before, after = previous.get(key), current.get(key)
+        if before is None or after is None:
+            changes[key] = None
+            continue
+        if key == "maxCompletedGrade":
+            before, after = _grade_rank(before), _grade_rank(after)
+        changes[key] = "up" if after > before else "down" if after < before else "equal"
+    return changes
+
+
+def _progress_periods(rows: list[tuple[TrainingSession, RouteAttempt]]) -> list[dict[str, Any]]:
+    months: dict[str, list[tuple[TrainingSession, RouteAttempt]]] = {}
+    for t, a in rows:
+        if not a.is_test:
+            months.setdefault(t.local_date.strftime("%Y-%m"), []).append((t, a))
+    periods = [{"period": period, **_period_summary(values)}
+               for period, values in sorted(months.items(), reverse=True)[:6]]
+    for current, previous in zip(periods, periods[1:]):
+        current["comparison"] = _comparison(current, previous)
+    return periods
 
 
 def _route_groups(training: TrainingSession, attempts: list[RouteAttempt]) -> list[dict[str, Any]]:
@@ -614,18 +669,18 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
     attempts = [attempt for _, attempt in rows]
     result = {"scope": scope, "dateFrom": start.isoformat() if start else None,
               "dateTo": end.isoformat() if end else None,
-              "trainingsCount": len({training.id for training, _ in rows}), **_summary(attempts)}
+              **_period_summary(rows)}
     if p.get("grade"):
         result["grade"] = p["grade"]
     if previous_start and previous_end:
         previous_rows = await _statistics_rows(session, user.id, previous_start, previous_end)
-        previous_attempts = [attempt for _, attempt in previous_rows]
-        previous_summary = _summary(previous_attempts)
         result["previousPeriod"] = {
-            "trainingsCount": len({training.id for training, _ in previous_rows}),
-            "completedRoutes": previous_summary["completedRoutes"],
-            "attemptsCount": previous_summary["attemptsCount"],
+            "dateFrom": previous_start.isoformat(), "dateTo": previous_end.isoformat(),
+            **_period_summary(previous_rows),
         }
+        result["comparison"] = _comparison(result, result["previousPeriod"])
+    if scope == "month":
+        result["grades"] = _grade_breakdown(attempts)
     if scope == "projects":
         latest: dict[str, RouteAttempt] = {}
         for attempt in attempts:
@@ -641,14 +696,7 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
             for key, a in latest.items() if key not in clean_keys
         ][:limit]
     elif scope == "grades":
-        grouped: dict[str, list[RouteAttempt]] = {}
-        for attempt in attempts:
-            grade = (attempt.route_snapshot or {}).get("grade") or (attempt.route.grade if attempt.route else None)
-            grouped.setdefault(grade or "Без категории", []).append(attempt)
-        result["grades"] = [
-            {"grade": grade, **_summary(values)}
-            for grade, values in sorted(grouped.items(), key=lambda item: _grade_rank(item[0]), reverse=True)
-        ]
+        result["grades"] = _grade_breakdown(attempts)
     elif scope == "locations":
         grouped_rows: dict[str | None, list[RouteAttempt]] = {}
         training_by_location: dict[str | None, set[str]] = {}
@@ -663,14 +711,7 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
         ]
         result["locations"].sort(key=lambda value: value["attemptsCount"], reverse=True)
     elif scope == "progress":
-        months: dict[str, list[tuple[TrainingSession, RouteAttempt]]] = {}
-        for row in rows:
-            months.setdefault(row[0].local_date.strftime("%Y-%m"), []).append(row)
-        result["periods"] = [
-            {"period": period, "trainingsCount": len({training.id for training, _ in values}),
-             **_summary([attempt for _, attempt in values])}
-            for period, values in sorted(months.items(), reverse=True)[:6]
-        ]
+        result["periods"] = _progress_periods(rows)
     elif scope == "records":
         completed = [attempt for attempt in attempts if attempt.clean_ascent is True]
         completed_grades = [(attempt.route_snapshot or {}).get("grade") or
