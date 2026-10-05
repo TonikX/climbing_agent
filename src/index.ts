@@ -21,12 +21,12 @@ const plugin = defineToolPlugin({
         label: operation.label,
         description: operation.description,
         parameters: operation.parameters,
-        async execute(_toolCallId, params) {
+        async execute(toolCallId, params) {
           const raw = params as Record<string, unknown>;
           const input = bindTelegramUser(operation.name === "get_climbing_trainings"
             ? { user: {}, ...raw } : raw, toolContext);
           const transport = usePostgresApi(operation as JournalOperation);
-          const result = await transport.execute(input);
+          const result = await transport.execute(input, toolCallId);
           if (operation.name === "get_climbing_statistics") {
             const formatted = formatStatisticsResult(String(input.scope), result);
             if (toolContext.delivery) {

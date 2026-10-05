@@ -24,10 +24,10 @@ describe("PostgreSQL API client", () => {
       async execute() { throw new Error("local executor must not run"); },
     });
 
-    await expect(operation.execute({ value: "saved" })).resolves.toEqual({ success: true });
+    await expect(operation.execute({ value: "saved" }, "tool-call-123")).resolves.toEqual({ success: true });
     expect(fetchMock).toHaveBeenCalledWith("http://api:8000/api/v1/tools/example", expect.objectContaining({
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-API-Key": "secret" },
+      headers: { "Content-Type": "application/json", "X-API-Key": "secret", "Idempotency-Key": "tool-call-123" },
       body: JSON.stringify({ payload: { value: "saved" } }),
     }));
   });

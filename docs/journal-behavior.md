@@ -77,6 +77,16 @@ An individual message represents a newly reported climbing event.
 Do not automatically deduplicate individual attempt messages because the user
 may genuinely climb the same route more than once.
 
+Transport retries with the same tool-call ID are idempotent. A genuinely new
+attempt gets a new call ID. Route sessions never span separate trainings.
+If merging a summary returns 409 because a route has several recorded attempts,
+inspect those attempts and correct them by attemptId. Do not retry the summary
+as a newly appended attempt.
+
+Explicit reachedTop=false overrides a previously recorded clean style;
+cleanAscent=false/null clears that clean style to unknown. Falls and hangs still
+prevent a clean ascent. Negative phrases such as «Срывов не было» are not falls.
+
 ### Test attempts
 
 If the user's message starts with the word `тест` (case-insensitive, after

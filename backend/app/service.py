@@ -1,12 +1,12 @@
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, with_loader_criteria
 
-from app.attempt_outcome import normalized_style, outcome
-from app.models import ExternalRef, RouteAttempt, TrainingSession, TrainingStatus, User
+from app.models import ExternalRef, Location, RouteAttempt, Section, TrainingSession, TrainingStatus, User
+from app.tool_service import _attempt
 from app.schemas import AttemptCreate, FinishTraining, TrainingCreate, UserResolveRequest
 
 async def resolve_user(session: AsyncSession, command: UserResolveRequest) -> User:
@@ -73,7 +73,7 @@ async def append_attempt(
     session: AsyncSession, user_id: str, training_id: str, command: AttemptCreate
 ) -> RouteAttempt:
     training = await session.scalar(
-        select(TrainingSession).where(
+        select(TrainingSession).options(selectinload(TrainingSession.sections)).where(
             TrainingSession.id == training_id,
             TrainingSession.user_id == user_id,
         ).with_for_update()
@@ -82,31 +82,16 @@ async def append_attempt(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Training not found")
     if training.status != TrainingStatus.ACTIVE.value:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Training is completed")
-    last_sequence = await session.scalar(
-        select(func.coalesce(func.max(RouteAttempt.sequence), 0)).where(RouteAttempt.training_id == training_id)
-    )
     raw = command.model_dump(exclude_unset=True)
-    for old, new in (("reached_top", "reachedTop"), ("clean_ascent", "cleanAscent")):
+    for old, new in (("reached_top", "reachedTop"), ("clean_ascent", "cleanAscent"),
+                     ("route_id", "routeId"), ("is_test", "isTest")):
         if old in raw: raw[new] = raw.pop(old)
-    facts = outcome(raw)
-    attempt = RouteAttempt(
-        training_id=training_id,
-        route_id=command.route_id,
-        sequence=int(last_sequence) + 1,
-        attempts=command.attempts,
-        **facts,
-        falls=command.falls,
-        style=normalized_style(raw),
-        belay=command.belay,
-        feel=command.feel,
-        notes=command.notes,
-        is_test=command.is_test,
-        route_snapshot={"name": command.name, "grade": command.grade, "sectionId": command.section_id},
-    )
-    training.version += 1
-    session.add(attempt)
-    await session.flush()
-    return attempt
+    section = await session.get(Section, command.section_id) if command.section_id else None
+    if command.section_id and not section:
+        raise HTTPException(404, "Section not found")
+    area = await session.get(Location, training.primary_location_id) if training.primary_location_id else None
+    user = await session.get(User, user_id)
+    return await _attempt(session, training, area, section, raw, force_test=user.test_mode_enabled)
 
 
 async def finish_training(

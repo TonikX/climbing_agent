@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.attempt_outcome import normalized_style, outcome
+from app.idempotency import run_mutation
 from app.models import ExternalRef, Gear, Location, Route, RouteAttempt, Section, TrainingSession, User
 
 
@@ -180,18 +181,22 @@ async def _active(session: AsyncSession, user_id: str) -> TrainingSession | None
         TrainingSession.user_id == user_id, TrainingSession.status == "active").with_for_update())
 
 
-async def _last_attempt(session: AsyncSession, user_id: str, active_only: bool = False) -> RouteAttempt | None:
+async def _last_attempt(session: AsyncSession, user_id: str, active_only: bool = False,
+                        training_id: str | None = None) -> RouteAttempt | None:
     query = select(RouteAttempt).join(TrainingSession).options(
         selectinload(RouteAttempt.route).selectinload(Route.section)).where(
         TrainingSession.user_id == user_id)
     if active_only:
         query = query.where(TrainingSession.status == "active")
+    if training_id:
+        query = query.where(RouteAttempt.training_id == training_id)
     return await session.scalar(query.order_by(RouteAttempt.created_at.desc(), RouteAttempt.sequence.desc()).limit(1))
 
 
 async def _attempt(session: AsyncSession, training: TrainingSession, area: Location | None,
                    default_section: Section | None, raw: dict[str, Any], *, force_test: bool = False) -> RouteAttempt:
-    previous = await _last_attempt(session, training.user_id, active_only=True)
+    previous = await _last_attempt(session, training.user_id, training_id=training.id)
+    is_test = bool(raw.get("isTest", False) or force_test)
     continuing = bool(raw.get("continueCurrentRoute"))
     if continuing and not previous:
         raise _bad("There is no current route to continue", 409)
@@ -221,9 +226,10 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
         (route and previous.route_id == route.id) or
         (not route and _norm((previous.route_snapshot or {}).get("name")) == _norm(raw.get("name")) and
          _norm((previous.route_snapshot or {}).get("grade")) == _norm(raw.get("grade")))))
-    route_session_key = (previous.route_session_key if previous and (continuing or same_as_previous) else None) \
+    route_session_key = (previous.route_session_key if previous and previous.is_test == is_test
+                         and (continuing or same_as_previous) else None) \
         or f"route_session_{uuid4()}"
-    attempt_number = int(await session.scalar(select(func.count(RouteAttempt.id)).where(
+    attempt_number = int(await session.scalar(select(func.coalesce(func.max(RouteAttempt.attempt_number), 0)).where(
         RouteAttempt.training_id == training.id,
         RouteAttempt.route_session_key == route_session_key))) + 1
     facts = outcome(raw)
@@ -238,7 +244,7 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
         style=style, belay=str(raw.get("belay") or "unknown"),
         feel=str(raw.get("feel") or "unknown"), notes=raw.get("notes"),
         high_point=raw.get("highPoint"), total_moves=raw.get("totalMoves"), falls=falls,
-        is_test=bool(raw.get("isTest", False) or force_test),
+        is_test=is_test,
         route_snapshot={"name": raw.get("name") or (route.name if route else None),
                         "grade": raw.get("grade") or (route.grade if route else None),
                         "areaId": area.id if area else None, "sectorId": section.id if section else None},
@@ -286,6 +292,7 @@ async def _start(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     current = await _active(session, user.id)
     if current:
         current.status, current.completed_at = "completed", datetime.now(UTC)
+        current.version += 1
     area = await _area(session, p.get("area"))
     section = await _section(session, area, p.get("sector"))
     item = TrainingSession(user_id=user.id, status="active", local_date=_date(p["date"]) if p.get("date") else _today(user),
@@ -369,9 +376,12 @@ async def _save(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     # Summaries are authoritative per route when there is one unambiguous match.
     for raw in p.get("routes") or []:
         route = await _route(session, section, raw)
-        candidates = [a for a in training.attempts if (route and a.route_id == route.id) or (
+        is_test = bool(raw.get("isTest", False) or user.test_mode_enabled)
+        candidates = [a for a in training.attempts if a.is_test == is_test and ((route and a.route_id == route.id) or (
             not route and _norm(a.route_snapshot.get("name")) == _norm(raw.get("name")) and
-            _norm(a.route_snapshot.get("grade")) == _norm(raw.get("grade")))]
+            _norm(a.route_snapshot.get("grade")) == _norm(raw.get("grade"))))]
+        if merged and len(candidates) > 1:
+            raise _bad("Summary matches multiple attempts; correct them by attemptId instead of adding a route summary", 409)
         if merged and len(candidates) == 1:
             item = candidates[0]
             facts = outcome(raw, item)
@@ -386,6 +396,8 @@ async def _save(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
                 item.is_test = bool(raw.get("isTest", False) or user.test_mode_enabled)
         else:
             await _attempt(session, training, area, section, raw, force_test=user.test_mode_enabled)
+    if merged:
+        training.version += 1
     await session.flush()
     count = await session.scalar(select(func.count(RouteAttempt.id)).where(RouteAttempt.training_id == training.id))
     return {"success": True, "merged": merged, "trainingId": training.id, "routeCount": count}
@@ -445,6 +457,8 @@ async def _update_attempt(session: AsyncSession, p: dict[str, Any]) -> dict[str,
     if item.style != style:
         item.style = style
         updated["style"] = style
+    training = await session.get(TrainingSession, item.training_id)
+    training.version += 1
     return {"success": True, "attemptId": item.id, "number": item.attempt_number, "updated": updated}
 
 
@@ -452,6 +466,8 @@ async def _delete_attempt(session: AsyncSession, p: dict[str, Any]) -> dict[str,
     user = await _user(session, p["user"])
     item = await _attempt_target(session, user.id, p)
     attempt_id, route_session_key = item.id, item.route_session_key
+    training = await session.get(TrainingSession, item.training_id)
+    training.version += 1
     await session.delete(item)
     await session.flush()
     remaining = await session.scalar(select(func.count(RouteAttempt.id)).where(
@@ -623,19 +639,36 @@ async def _statistics_rows(session: AsyncSession, user_id: str, start: date | No
     return [(training, attempt) for training in trainings for attempt in training.attempts if not attempt.is_test]
 
 
+def _filter_statistics_rows(rows, p: dict[str, Any]):
+    route_name, grade = _norm(p.get("route")), _norm(p.get("grade"))
+    def matches(attempt):
+        snapshot = attempt.route_snapshot or {}
+        name = _norm(snapshot.get("name") or (attempt.route.name if attempt.route else None))
+        category = _norm(snapshot.get("grade") or (attempt.route.grade if attempt.route else None))
+        return (not p.get("routeId") or attempt.route_id == p["routeId"]) and \
+               (not route_name or route_name in name) and (not grade or grade == category)
+    return [(training, attempt) for training, attempt in rows if matches(attempt)]
+
+
 async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     user = await _user(session, p["user"])
     today, scope = _today(user), p.get("scope", "week")
     start: date | None = _date(p["dateFrom"]) if p.get("dateFrom") else None
     end: date | None = _date(p["dateTo"]) if p.get("dateTo") else None
     previous_start = previous_end = None
+    anchor = start or end or today
     if scope == "week":
-        start, end = today - timedelta(days=today.weekday()), today
+        start = start or anchor - timedelta(days=anchor.weekday())
+        end = end or (today if start <= today <= start + timedelta(days=6) else start + timedelta(days=6))
         previous_start, previous_end = start - timedelta(days=7), start - timedelta(days=1)
     elif scope == "month":
-        start, end = today.replace(day=1), today
-        previous_end = start - timedelta(days=1)
+        start = start or anchor.replace(day=1)
+        next_month = (anchor.replace(day=1) + timedelta(days=32)).replace(day=1)
+        end = end or (today if start <= today < next_month else next_month - timedelta(days=1))
+        previous_end = start.replace(day=1) - timedelta(days=1)
         previous_start = previous_end.replace(day=1)
+    if start and end and start > end:
+        raise _bad("dateFrom must not be after dateTo", 422)
     if scope == "last_training":
         training = await session.scalar(select(TrainingSession).options(
             selectinload(TrainingSession.attempts).selectinload(RouteAttempt.route),
@@ -657,17 +690,7 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
         if p.get("detail") == "full":
             result["training"]["routes"] = _route_groups(training, attempts)
         return result
-    rows = await _statistics_rows(session, user.id, start, end)
-    route_name = _norm(p.get("route"))
-    if p.get("routeId") or route_name:
-        rows = [(t, a) for t, a in rows if
-                (p.get("routeId") and a.route_id == p["routeId"]) or
-                (route_name and route_name in _norm((a.route_snapshot or {}).get("name") or
-                                                    (a.route.name if a.route else None)))]
-    grade = _norm(p.get("grade"))
-    if grade:
-        rows = [(training, attempt) for training, attempt in rows if grade == _norm(
-            (attempt.route_snapshot or {}).get("grade") or (attempt.route.grade if attempt.route else None))]
+    rows = _filter_statistics_rows(await _statistics_rows(session, user.id, start, end), p)
     attempts = [attempt for _, attempt in rows]
     result = {"scope": scope, "dateFrom": start.isoformat() if start else None,
               "dateTo": end.isoformat() if end else None,
@@ -675,7 +698,8 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
     if p.get("grade"):
         result["grade"] = p["grade"]
     if previous_start and previous_end:
-        previous_rows = await _statistics_rows(session, user.id, previous_start, previous_end)
+        previous_rows = _filter_statistics_rows(
+            await _statistics_rows(session, user.id, previous_start, previous_end), p)
         result["previousPeriod"] = {
             "dateFrom": previous_start.isoformat(), "dateTo": previous_end.isoformat(),
             **_period_summary(previous_rows),
@@ -836,7 +860,16 @@ HANDLERS = {
 }
 
 
-async def execute_tool(session: AsyncSession, operation: str, payload: dict[str, Any]) -> dict[str, Any]:
+READ_OPERATIONS = {"find_climbing_routes", "get_current_climbing_training",
+                   "get_climbing_trainings", "get_climbing_statistics"}
+
+
+async def execute_tool(session: AsyncSession, operation: str, payload: dict[str, Any],
+                       idempotency_key: str | None = None) -> dict[str, Any]:
     handler = HANDLERS.get(operation)
     if not handler: raise _bad("Unknown climbing operation", 404)
+    if operation not in READ_OPERATIONS:
+        user = await _user(session, payload["user"])
+        return await run_mutation(session, user.id, operation, idempotency_key, payload,
+                                  lambda: handler(session, payload))
     return await handler(session, payload)

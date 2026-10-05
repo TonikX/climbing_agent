@@ -38,3 +38,20 @@ class OutcomeTest(unittest.TestCase):
         self.assertEqual(summary["flashCount"], 1)
         self.assertEqual(summary["unknownCleanRoutes"], 1)
         self.assertEqual(summary["activeProjects"], 2)
+
+    def test_explicit_corrections_override_clean_style_and_validate_input(self):
+        current = SimpleNamespace(reached_top=True, clean_ascent=True, falls=0, style="flash", notes=None)
+        for raw, expected in (({"reachedTop": False}, False), ({"cleanAscent": False}, False),
+                              ({"cleanAscent": None}, None)):
+            self.assertEqual(outcome(raw, current)["clean_ascent"], expected)
+            self.assertEqual(normalized_style(raw, current), "unknown")
+        self.assertFalse(outcome({"reachedTop": False}, current)["reached_top"])
+        for raw in ({"style": "flash", "reachedTop": "yes"}, {"style": "flash", "cleanAscent": "yes"}):
+            with self.assertRaises(HTTPException):
+                outcome(raw)
+
+    def test_note_negations_do_not_hide_actual_falls(self):
+        for notes in ("Срывов не было", "Не было срывов и зависаний", "Не сорвался, не зависал"):
+            self.assertTrue(outcome({"style": "flash", "falls": 0, "notes": notes})["clean_ascent"])
+        self.assertFalse(outcome({"style": "flash", "falls": 1, "notes": "Срывов не было"})["clean_ascent"])
+        self.assertFalse(outcome({"style": "flash", "notes": "Без срывов, но завис на верёвке"})["clean_ascent"])

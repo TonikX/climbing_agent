@@ -119,6 +119,20 @@ class ExtendedStatisticsTest(unittest.TestCase):
 
 
 class PeriodStatisticsTest(unittest.IsolatedAsyncioTestCase):
+    async def test_explicit_dates_and_filters_apply_to_both_periods(self):
+        current = [(training("aug", "2026-08-04"), graded("a", 1, "7A", clean=True))]
+        previous = [(training("jul", "2026-07-04"), graded("b", 1, "6A", clean=True)),
+                    (training("jul2", "2026-07-05"), graded("c", 2, "7A", clean=True))]
+        with patch("app.tool_service._user", AsyncMock(return_value=SimpleNamespace(id="u"))), \
+             patch("app.tool_service._today", return_value=date(2026, 10, 5)), \
+             patch("app.tool_service._statistics_rows", AsyncMock(side_effect=[current, previous])) as rows:
+            result = await _statistics(None, {"user": {}, "scope": "month", "grade": "7A",
+                                             "dateFrom": "2026-08-03", "dateTo": "2026-08-31"})
+        self.assertEqual(rows.await_args_list[0].args[2:], (date(2026, 8, 3), date(2026, 8, 31)))
+        self.assertEqual(rows.await_args_list[1].args[2:], (date(2026, 7, 1), date(2026, 7, 31)))
+        self.assertEqual(result["previousPeriod"]["completedRoutes"], 1)
+        self.assertEqual(result["previousPeriod"]["maxCompletedGrade"], "7A")
+
     async def test_month_uses_previous_calendar_month_and_full_summary(self):
         current = [(training("jan", "2026-01-04", 80), graded("a", 1, "7A", clean=True))]
         previous = [(training("dec", "2025-12-31", 90), graded("b", 2, "6C+", clean=True))]
