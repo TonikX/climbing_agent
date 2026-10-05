@@ -6,7 +6,7 @@ COPY package.json package-lock.json tsconfig.json openclaw.plugin.json ./
 COPY src ./src
 COPY skills ./skills
 COPY deploy/openclaw/cloudru-deepseek.json ./deploy/openclaw/cloudru-deepseek.json
-RUN npm ci --no-audit --no-fund && npm run build
+RUN npm ci --no-audit --no-fund && npm run plugin:build && npm run plugin:validate
 
 FROM ${OPENCLAW_IMAGE}
 USER root
