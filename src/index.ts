@@ -3,7 +3,7 @@ import { createJournalTools, type JournalOperation } from "./application/journal
 import { formatStatisticsResult, registerTelegramMenu } from "./application/telegram-menu.js";
 import { usePostgresApi } from "./storage/api-client.js";
 
-import { bindTelegramUser } from "./application/telegram-identity.js";
+import { toolActor } from "./application/telegram-identity.js";
 
 const journal = createJournalTools();
 const plugin = defineToolPlugin({
@@ -22,10 +22,8 @@ const plugin = defineToolPlugin({
         description: operation.description,
         parameters: operation.parameters,
         async execute(toolCallId, params) {
-          const raw = params as Record<string, unknown>;
-          const input = bindTelegramUser(operation.name === "get_climbing_trainings"
-            ? { user: {}, ...raw } : raw, toolContext);
-          const transport = usePostgresApi(operation as JournalOperation);
+          const input = params as Record<string, unknown>;
+          const transport = usePostgresApi(operation as JournalOperation, toolActor(toolContext));
           const result = await transport.execute(input, toolCallId);
           if (operation.name === "get_climbing_statistics") {
             const formatted = formatStatisticsResult(String(input.scope), result);

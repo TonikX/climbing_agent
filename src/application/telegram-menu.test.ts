@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatStatisticsResult, registerTelegramMenu } from "./telegram-menu.js";
+import { clearTelegramSessions } from "../storage/api-client.js";
 
 describe("statistics formatting", () => {
   const previous = { dateFrom: "2026-08-01", period: "2026-08", trainingsCount: 6,
@@ -49,10 +50,33 @@ describe("statistics formatting", () => {
 });
 
 describe("Telegram journal menu", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.unstubAllGlobals(); clearTelegramSessions(); });
+
+  it("updates the sender's profile directly without an LLM and reports auth failures", async () => {
+    process.env.CLIMBING_API_URL = "http://api";
+    process.env.CLIMBING_API_KEY = "test-key";
+    const fetchMock = vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({access_token:"profile-token",expires_in:900})})
+      .mockResolvedValueOnce({ok:true,json:async()=>({name:"Антон",timezone:"Europe/Moscow"})});
+    vi.stubGlobal("fetch",fetchMock);
+    const commands: Array<Record<string,unknown>> = [];
+    registerTelegramMenu({registerCommand:(command:unknown)=>commands.push(command as Record<string,unknown>)} as never);
+    const handler = commands.find(c=>c.name === "profile_name")!.handler as (ctx:unknown)=>Promise<{text:string}>;
+    const result = await handler({channel:"telegram",senderId:"43",isAuthorizedSender:true,args:"Антон"});
+    expect(result.text).toContain("Имя: Антон");
+    expect(fetchMock.mock.calls[0][1].body).toBe(JSON.stringify({telegram_id:"43"}));
+    expect(fetchMock.mock.calls[1][0]).toBe("http://api/api/v1/me");
+    expect(fetchMock.mock.calls[1][1].method).toBe("PATCH");
+    expect(fetchMock.mock.calls[1][1].body).toBe(JSON.stringify({name:"Антон"}));
+    clearTelegramSessions();
+    fetchMock.mockResolvedValue({ok:false,status:403});
+    const menu = commands.find(c=>c.name === "journal")!.handler as (ctx:unknown)=>Promise<{text:string}>;
+    const failed = await menu({channel:"telegram",senderId:"43",isAuthorizedSender:true});
+    expect(failed.text).toContain("Не удалось");
+    expect(failed.text).not.toContain("Сейчас активной тренировки нет");
+  });
 
   it("shows reaching the top without presenting it as a clean ascent", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({access_token:"token",expires_in:900})}).mockResolvedValue({ ok: true, json: async () => ({
       active: true, routes: [{ route: { name: "Test route" }, attempts: [
         { number: 1, reachedTop: true, cleanAscent: false, falls: 2, style: "unknown", belay: "top_rope" },
       ] }],
@@ -62,7 +86,7 @@ describe("Telegram journal menu", () => {
     const commands: Array<Record<string, unknown>> = [];
     registerTelegramMenu({ registerCommand: (command: unknown) => commands.push(command as Record<string, unknown>) } as never);
     const command = commands.find(command => command.name === "completed_routes")!;
-    const result = await (command.handler as (ctx: unknown) => Promise<{text: string}>)({ senderId: "42" });
+    const result = await (command.handler as (ctx: unknown) => Promise<{text: string}>)({ senderId: "42", channel: "telegram", isAuthorizedSender: true });
     expect(result.text).toContain("Test route");
     expect(result.text).toContain("• Долез до конца: да");
     expect(result.text).toContain("• Пролез чисто: нет");
@@ -72,7 +96,7 @@ describe("Telegram journal menu", () => {
   });
 
   it("registers a journal command with direct action buttons", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({access_token:"token",expires_in:900})}).mockResolvedValue({
       ok: true,
       json: async () => ({ active: true, status: "active", summary: {} }),
     }));
@@ -82,13 +106,14 @@ describe("Telegram journal menu", () => {
     registerTelegramMenu({ registerCommand: (command: unknown) => commands.push(command as Record<string, unknown>) } as never);
 
     expect(commands.map((command) => command.name)).toEqual([
+      "profile", "profile_name", "timezone",
       "completed_routes", "journal", "start_training", "toggle_test_mode", "another_attempt",
       "stats_menu", "current_training", "current_training_details", "last_training",
       "last_training_details", "week_stats", "month_stats", "progress_stats", "grade_stats", "location_stats",
       "project_stats", "record_stats", "finish_training",
     ]);
     const journal = commands.find(command => command.name === "journal")!;
-    const result = await (journal.handler as (ctx: unknown) => Promise<Record<string, unknown>>)({ senderId: "42" });
+    const result = await (journal.handler as (ctx: unknown) => Promise<Record<string, unknown>>)({ senderId: "42", channel:"telegram", isAuthorizedSender:true });
     expect(result.text).toBe("Тренировка активна. Что сделать?");
     expect(result.interactive).toMatchObject({
       blocks: [{
@@ -99,6 +124,7 @@ describe("Telegram journal menu", () => {
           { action: { type: "command", command: "/stats_menu" } },
           { action: { type: "command", command: "/finish_training" } },
           { action: { type: "command", command: "/toggle_test_mode" } },
+          { action: { type: "command", command: "/profile" } },
         ],
       }],
     });

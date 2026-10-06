@@ -85,18 +85,10 @@ async def _by_ref(session: AsyncSession, entity_type: str, refs: Any) -> Any | N
 async def _user(session: AsyncSession, raw: dict[str, Any]) -> User:
     item = await session.get(User, str(raw["id"])) if raw.get("id") else None
     item = item or await _by_ref(session, "user", raw.get("externalRefs"))
-    if not item and raw.get("name"):
-        matches = list((await session.scalars(select(User).where(func.lower(User.name) == _norm(raw["name"])))).all())
-        if len(matches) > 1:
-            raise _bad("User name is ambiguous")
-        item = matches[0] if matches else None
     if not item:
-        if not raw.get("name"):
-            raise _bad("Cannot create a user without a name")
-        item = User(name=str(raw["name"]), timezone=str(raw.get("timezone") or "Europe/Moscow"))
-        session.add(item)
-        await session.flush()
-    await _add_refs(session, "user", item, raw.get("externalRefs"))
+        raise _bad("Authenticated user not found", 404)
+    if item.status != "active":
+        raise _bad("Account is blocked", 403)
     return item
 
 
@@ -804,23 +796,16 @@ async def _find_routes(session: AsyncSession, p: dict[str, Any]) -> dict[str, An
     return {"count": len(result), "routes": result}
 
 
-async def _get_trainings(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
+async def _get_trainings(session: AsyncSession, p: dict[str, Any], *, export_all: bool = False) -> dict[str, Any]:
     query = select(TrainingSession).options(
         selectinload(TrainingSession.attempts).selectinload(RouteAttempt.route).selectinload(Route.section),
         selectinload(TrainingSession.sections), selectinload(TrainingSession.gear))
-    if p.get("user"):
-        user = await _user(session, p["user"])
-        query = query.where(TrainingSession.user_id == user.id)
-    elif p.get("userId"): query = query.where(TrainingSession.user_id == p["userId"])
-    elif p.get("userName"):
-        user = await session.scalar(select(User).where(func.lower(User.name) == _norm(p["userName"])))
-        if not user: return {"count": 0, "trainings": []}
-        query = query.where(TrainingSession.user_id == user.id)
+    user = await _user(session, p.get("user") or {})
+    query = query.where(TrainingSession.user_id == user.id)
     if p.get("status"): query = query.where(TrainingSession.status == p["status"])
     if p.get("dateFrom"): query = query.where(TrainingSession.local_date >= _date(p["dateFrom"]))
     if p.get("dateTo"): query = query.where(TrainingSession.local_date <= _date(p["dateTo"]))
     items = list((await session.scalars(query.order_by(TrainingSession.local_date.desc(), TrainingSession.created_at.desc()))).unique().all())
-    users = {u.id: u for u in (await session.scalars(select(User))).all()}
     result = []
     for item in items:
         area = await session.get(Location, item.primary_location_id) if item.primary_location_id else None
@@ -833,7 +818,6 @@ async def _get_trainings(session: AsyncSession, p: dict[str, Any]) -> dict[str, 
                    (not p.get("route") or _norm(p["route"]) in _norm(snapshot.get("name") or (route.name if route else None))) and \
                    (not p.get("grade") or _norm(p["grade"]) == _norm(snapshot.get("grade") or (route.grade if route else None)))
         if (p.get("sector") or p.get("route") or p.get("grade")) and not any(attempt_matches(a) for a in attempts): continue
-        user = users[item.user_id]
         result.append({"id": item.id, "userId": item.user_id, "status": item.status,
                        "createdAt": item.created_at.isoformat(), "completedAt": item.completed_at.isoformat() if item.completed_at else None,
                        "date": item.local_date.isoformat(), "startedAt": item.started_at.isoformat() if item.started_at else None,
@@ -845,7 +829,7 @@ async def _get_trainings(session: AsyncSession, p: dict[str, Any]) -> dict[str, 
                        "area": _area_dict(area), "sectors": [_section_dict(s) for s in item.sections],
                        "gear": [_gear_dict(g) for g in item.gear],
                        "routes": [_attempt_dict(a, a.route, a.route.section if a.route else next((s for s in item.sections if s.id == (a.route_snapshot or {}).get("sectorId")), None)) for a in attempts]})
-        if len(result) >= int(p.get("limit") or 100): break
+        if not export_all and len(result) >= min(max(int(p.get("limit") or 100), 1), 100): break
     return {"count": len(result), "trainings": result}
 
 

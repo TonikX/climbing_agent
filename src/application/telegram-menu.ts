@@ -4,14 +4,16 @@ import type {
   PluginCommandResult,
 } from "openclaw/plugin-sdk/plugin-entry";
 import { createJournalTools } from "./journal.js";
-import { usePostgresApi } from "../storage/api-client.js";
+import { userApi, usePostgresApi } from "../storage/api-client.js";
+
+import { commandActor } from "./telegram-identity.js";
 
 const journal = createJournalTools();
-const startTraining = usePostgresApi(journal.start_climbing_training);
-const currentTraining = usePostgresApi(journal.get_current_climbing_training);
-const statistics = usePostgresApi(journal.get_climbing_statistics);
-const finishTraining = usePostgresApi(journal.finish_climbing_training);
-const setTestMode = usePostgresApi(journal.set_climbing_test_mode);
+const startTraining = (ctx: PluginCommandContext) => usePostgresApi(journal.start_climbing_training, commandActor(ctx));
+const currentTraining = (ctx: PluginCommandContext) => usePostgresApi(journal.get_current_climbing_training, commandActor(ctx));
+const statistics = (ctx: PluginCommandContext) => usePostgresApi(journal.get_climbing_statistics, commandActor(ctx));
+const finishTraining = (ctx: PluginCommandContext) => usePostgresApi(journal.finish_climbing_training, commandActor(ctx));
+const setTestMode = (ctx: PluginCommandContext) => usePostgresApi(journal.set_climbing_test_mode, commandActor(ctx));
 
 type JsonRecord = Record<string, unknown>;
 
@@ -31,13 +33,8 @@ function menuButtons(active: boolean, testMode: boolean) {
     label: testMode ? "🧪 Тестовый режим: ВКЛ" : "🧪 Тестовый режим: выкл",
     action: { type: "command" as const, command: "/toggle_test_mode" },
   });
+  buttons.push({ label: "👤 Мой профиль", action: { type: "command" as const, command: "/profile" } });
   return { blocks: [{ type: "buttons" as const, buttons }] };
-}
-
-function telegramUser(ctx: PluginCommandContext) {
-  const id = ctx.senderId?.trim();
-  if (!id) throw new Error("Telegram не передал идентификатор пользователя");
-  return { externalRefs: [{ system: "telegram", id }] };
 }
 
 function record(value: unknown): JsonRecord {
@@ -292,53 +289,59 @@ function menu(textValue: string, state: JournalState): PluginCommandResult {
   return { text: `${textValue}${mode}`, interactive: menuButtons(state.active, state.testMode) };
 }
 
-function errorReply(error: unknown, state: JournalState): PluginCommandResult {
+function errorReply(error: unknown): PluginCommandResult {
   const message = error instanceof Error ? error.message : String(error);
-  return menu(`Не удалось выполнить действие: ${message}`, state);
+  return { text: `Не удалось выполнить действие: ${message}` };
 }
 
 async function journalState(ctx: PluginCommandContext): Promise<JournalState> {
-  try {
-    const result = record(await currentTraining.execute({ user: telegramUser(ctx), detail: "summary" }));
+    const result = record(await currentTraining(ctx).execute({ detail: "summary" }));
     return {
       active: result.active !== false && result.status !== "not_found",
       testMode: result.testMode === true,
     };
-  } catch {
-    return { active: false, testMode: false };
-  }
 }
 
 async function openMenu(ctx: PluginCommandContext): Promise<PluginCommandResult> {
-  const state = await journalState(ctx);
-  return menu(state.active ? "Тренировка активна. Что сделать?" : "Сейчас активной тренировки нет.", state);
+  try {
+    const state = await journalState(ctx);
+    return menu(state.active ? "Тренировка активна. Что сделать?" : "Сейчас активной тренировки нет.", state);
+  } catch (error) { return errorReply(error); }
+}
+
+async function showProfile(ctx: PluginCommandContext, update?: Record<string, string>): Promise<PluginCommandResult> {
+  try {
+    const profile = record(await userApi(commandActor(ctx), "/api/v1/me", update ? "PATCH" : "GET", update));
+    return { text: `👤 Мой профиль\nИмя: ${text(profile.name)}\nЧасовой пояс: ${text(profile.timezone)}\n\n` +
+      "Изменить имя: /profile_name Антон\nИзменить часовой пояс: /timezone Europe/Moscow\nОткрыть журнал: /journal" };
+  } catch (error) { return errorReply(error); }
 }
 
 async function start(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
     const state = await journalState(ctx);
     if (state.active) return menu("Тренировка уже активна.", state);
-    await startTraining.execute({ user: telegramUser(ctx) });
+    await startTraining(ctx).execute({  });
     return menu("Тренировка начата ▶️ Можешь отправлять пролазы голосом или текстом.", { ...state, active: true });
   } catch (error) {
-    return errorReply(error, await journalState(ctx));
+    return errorReply(error);
   }
 }
 
 async function toggleTestMode(ctx: PluginCommandContext): Promise<PluginCommandResult> {
-  const state = await journalState(ctx);
   try {
+    const state = await journalState(ctx);
     const enabled = !state.testMode;
-    await setTestMode.execute({ user: telegramUser(ctx), enabled });
+    await setTestMode(ctx).execute({ enabled });
     return menu(enabled ? "Тестовый режим включён." : "Тестовый режим выключен.", { ...state, testMode: enabled });
   } catch (error) {
-    return errorReply(error, state);
+    return errorReply(error);
   }
 }
 
 async function showCurrent(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
-    const result = record(await currentTraining.execute({ user: telegramUser(ctx), detail: "summary" }));
+    const result = record(await currentTraining(ctx).execute({ detail: "summary" }));
     const state = { active: result.active !== false && result.status !== "not_found", testMode: result.testMode === true };
     if (!state.active) return statisticsBack("Сейчас активной тренировки нет.");
     const summary = record(result.summary);
@@ -359,7 +362,7 @@ async function showCurrent(ctx: PluginCommandContext): Promise<PluginCommandResu
 
 async function showCurrentDetails(ctx: PluginCommandContext, completedOnly = false): Promise<PluginCommandResult> {
   try {
-    const result = record(await currentTraining.execute({ user: telegramUser(ctx), detail: "full" }));
+    const result = record(await currentTraining(ctx).execute({ detail: "full" }));
     if (result.active === false) return statisticsBack("Сейчас активной тренировки нет.");
     const routes = completedOnly ? array(result.routes).filter(group =>
       array(group.attempts).some(attempt => attempt.reachedTop === true)) : result.routes;
@@ -373,7 +376,7 @@ async function showCurrentDetails(ctx: PluginCommandContext, completedOnly = fal
 
 async function showPeriod(ctx: PluginCommandContext, scope: "week" | "month"): Promise<PluginCommandResult> {
   try {
-    const result = record(await statistics.execute({ user: telegramUser(ctx), scope }));
+    const result = record(await statistics(ctx).execute({ scope }));
     return statisticsBack(formatStatisticsResult(scope, result));
   } catch (error) {
     return statisticsBack(`Не удалось загрузить статистику: ${error instanceof Error ? error.message : String(error)}`);
@@ -382,7 +385,7 @@ async function showPeriod(ctx: PluginCommandContext, scope: "week" | "month"): P
 
 async function showLastTraining(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
-    const response = record(await statistics.execute({ user: telegramUser(ctx), scope: "last_training" }));
+    const response = record(await statistics(ctx).execute({ scope: "last_training" }));
     if (!response.training) return statisticsBack("Завершённых тренировок пока нет.");
     return statisticsBack(formatStatisticsResult("last_training", response),
       [{ label: "📋 Подробнее", command: "/last_training_details" }]);
@@ -393,7 +396,7 @@ async function showLastTraining(ctx: PluginCommandContext): Promise<PluginComman
 
 async function showLastTrainingDetails(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
-    const response = record(await statistics.execute({ user: telegramUser(ctx), scope: "last_training", detail: "full" }));
+    const response = record(await statistics(ctx).execute({ scope: "last_training", detail: "full" }));
     const training = record(response.training);
     if (!response.training) return statisticsBack("Завершённых тренировок пока нет.");
     return statisticsBack(routeDetailLines("📋 Последняя тренировка — все попытки", training.routes),
@@ -405,7 +408,7 @@ async function showLastTrainingDetails(ctx: PluginCommandContext): Promise<Plugi
 
 async function showProgress(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
-    const result = record(await statistics.execute({ user: telegramUser(ctx), scope: "progress" }));
+    const result = record(await statistics(ctx).execute({ scope: "progress" }));
     return statisticsBack(formatStatisticsResult("progress", result));
   } catch (error) {
     return statisticsBack(`Не удалось загрузить прогресс: ${error instanceof Error ? error.message : String(error)}`);
@@ -414,7 +417,7 @@ async function showProgress(ctx: PluginCommandContext): Promise<PluginCommandRes
 
 async function showGrades(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
-    const result = record(await statistics.execute({ user: telegramUser(ctx), scope: "grades" }));
+    const result = record(await statistics(ctx).execute({ scope: "grades" }));
     return statisticsBack(formatStatisticsResult("grades", result));
   } catch (error) {
     return statisticsBack(`Не удалось загрузить категории: ${error instanceof Error ? error.message : String(error)}`);
@@ -423,7 +426,7 @@ async function showGrades(ctx: PluginCommandContext): Promise<PluginCommandResul
 
 async function showLocations(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
-    const result = record(await statistics.execute({ user: telegramUser(ctx), scope: "locations" }));
+    const result = record(await statistics(ctx).execute({ scope: "locations" }));
     return statisticsBack(formatStatisticsResult("locations", result));
   } catch (error) {
     return statisticsBack(`Не удалось загрузить локации: ${error instanceof Error ? error.message : String(error)}`);
@@ -432,7 +435,7 @@ async function showLocations(ctx: PluginCommandContext): Promise<PluginCommandRe
 
 async function showProjects(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
-    const result = record(await statistics.execute({ user: telegramUser(ctx), scope: "projects", limit: 20 }));
+    const result = record(await statistics(ctx).execute({ scope: "projects", limit: 20 }));
     return statisticsBack(formatStatisticsResult("projects", result));
   } catch (error) {
     return statisticsBack(`Не удалось загрузить проекты: ${error instanceof Error ? error.message : String(error)}`);
@@ -441,7 +444,7 @@ async function showProjects(ctx: PluginCommandContext): Promise<PluginCommandRes
 
 async function showRecords(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
-    const result = record(await statistics.execute({ user: telegramUser(ctx), scope: "records" }));
+    const result = record(await statistics(ctx).execute({ scope: "records" }));
     return statisticsBack(formatStatisticsResult("records", result));
   } catch (error) {
     return statisticsBack(`Не удалось загрузить рекорды: ${error instanceof Error ? error.message : String(error)}`);
@@ -450,15 +453,23 @@ async function showRecords(ctx: PluginCommandContext): Promise<PluginCommandResu
 
 async function finish(ctx: PluginCommandContext): Promise<PluginCommandResult> {
   try {
-    await finishTraining.execute({ user: telegramUser(ctx) });
+    await finishTraining(ctx).execute({  });
     const state = await journalState(ctx);
     return menu("Тренировка завершена ✅", { ...state, active: false });
   } catch (error) {
-    return errorReply(error, await journalState(ctx));
+    return errorReply(error);
   }
 }
 
 export function registerTelegramMenu(api: OpenClawPluginApi): void {
+  api.registerCommand({ name: "profile", description: "Мой профиль", channels: ["telegram"],
+    acceptsArgs: false, handler: (ctx) => showProfile(ctx) });
+  api.registerCommand({ name: "profile_name", description: "Изменить своё имя", channels: ["telegram"],
+    acceptsArgs: true, handler: (ctx) => ctx.args?.trim()
+      ? showProfile(ctx, { name: ctx.args.trim() }) : Promise.resolve({ text: "Напиши /profile_name и своё имя" }) });
+  api.registerCommand({ name: "timezone", description: "Изменить часовой пояс", channels: ["telegram"],
+    acceptsArgs: true, handler: (ctx) => ctx.args?.trim()
+      ? showProfile(ctx, { timezone: ctx.args.trim() }) : Promise.resolve({ text: "Напиши /timezone Europe/Moscow или свой часовой пояс IANA" }) });
   api.registerCommand({
     name: "completed_routes",
     description: "Трассы, на которых долез до конца",

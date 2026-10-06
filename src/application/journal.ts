@@ -18,12 +18,6 @@ const Ref = Type.Object({
   url: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 
-const User = Type.Object({
-  id: Type.Optional(Type.String()),
-  name: Type.Optional(Type.String()),
-  externalRefs: Type.Optional(Type.Array(Ref)),
-}, { additionalProperties: false });
-
 const Area = Type.Object({
   id: Type.Optional(Type.String()),
   name: Type.Optional(Type.String()),
@@ -86,7 +80,6 @@ export function createJournalTools() {
     start_climbing_training: operation({
       name: "start_climbing_training", label: "Start training", description: "Start an active training.",
       parameters: Type.Object({
-        user: User,
         date: Type.Optional(Type.String()),
         startedAt: Type.Optional(Type.String()),
         environment: Type.Optional(Type.Union([Type.Literal("indoor"), Type.Literal("outdoor"), Type.Literal("unknown")])),
@@ -98,7 +91,7 @@ export function createJournalTools() {
     append_climbing_attempt: operation({
       name: "append_climbing_attempt", label: "Add attempt", description: "Record one physical climbing attempt.",
       parameters: Type.Object({
-        user: User, date: Type.Optional(Type.String()), area: Type.Optional(Area),
+        date: Type.Optional(Type.String()), area: Type.Optional(Area),
         ...AttemptFields,
       }, { additionalProperties: false }),
     }),
@@ -106,7 +99,7 @@ export function createJournalTools() {
     update_climbing_attempt: operation({
       name: "update_climbing_attempt", label: "Correct attempt", description: "Correct an attempt, usually the last one.",
       parameters: Type.Object({
-        user: User, attemptId: Type.Optional(Type.String()), useLastAttempt: Type.Optional(Type.Boolean()),
+        attemptId: Type.Optional(Type.String()), useLastAttempt: Type.Optional(Type.Boolean()),
         highPoint: Type.Optional(Type.Integer({ minimum: 0 })),
         totalMoves: Type.Optional(Type.Integer({ minimum: 1 })), falls: Type.Optional(Type.Integer({ minimum: 0 })),
         reachedTop: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])),
@@ -117,14 +110,14 @@ export function createJournalTools() {
     delete_climbing_attempt: operation({
       name: "delete_climbing_attempt", label: "Delete attempt", description: "Delete an attempt, usually the last one.",
       parameters: Type.Object({
-        user: User, attemptId: Type.Optional(Type.String()), useLastAttempt: Type.Optional(Type.Boolean()),
+        attemptId: Type.Optional(Type.String()), useLastAttempt: Type.Optional(Type.Boolean()),
       }, { additionalProperties: false }),
     }),
 
     save_climbing_training: operation({
       name: "save_climbing_training", label: "Save training", description: "Save a completed training or merge its summary.",
       parameters: Type.Object({
-        user: User, date: Type.String(), startedAt: Type.Optional(Type.String()),
+        date: Type.String(), startedAt: Type.Optional(Type.String()),
         durationMinutes: Type.Optional(Type.Integer({ minimum: 1 })),
         environment: Type.Optional(Type.Union([Type.Literal("indoor"), Type.Literal("outdoor"), Type.Literal("unknown")])),
         area: Type.Optional(Area), sector: Type.Optional(Sector), weather: Type.Optional(Weather),
@@ -137,7 +130,7 @@ export function createJournalTools() {
     update_climbing_training: operation({
       name: "update_climbing_training", label: "Update training", description: "Update active training metadata.",
       parameters: Type.Object({
-        user: User, trainingId: Type.Optional(Type.String()),
+        trainingId: Type.Optional(Type.String()),
         durationMinutes: Type.Optional(Type.Integer({ minimum: 1 })),
         environment: Type.Optional(Type.Union([Type.Literal("indoor"), Type.Literal("outdoor"), Type.Literal("unknown")])),
         area: Type.Optional(Area), sector: Type.Optional(Sector), weather: Type.Optional(Weather),
@@ -149,7 +142,7 @@ export function createJournalTools() {
     finish_climbing_training: operation({
       name: "finish_climbing_training", label: "Finish training", description: "Finish the active training.",
       parameters: Type.Object({
-        user: User, durationMinutes: Type.Optional(Type.Integer({ minimum: 1 })),
+        durationMinutes: Type.Optional(Type.Integer({ minimum: 1 })),
         physicalState: Type.Optional(Type.String()), notes: Type.Optional(Type.String()),
       }, { additionalProperties: false }),
     }),
@@ -157,14 +150,13 @@ export function createJournalTools() {
     get_current_climbing_training: operation({
       name: "get_current_climbing_training", label: "Current training", description: "Get active training summary or requested details.",
       parameters: Type.Object({
-        user: User, detail: Type.Optional(Type.Union([Type.Literal("summary"), Type.Literal("full")])),
+        detail: Type.Optional(Type.Union([Type.Literal("summary"), Type.Literal("full")])),
       }, { additionalProperties: false }),
     }),
 
     get_climbing_statistics: operation({
       name: "get_climbing_statistics", label: "Climbing statistics", description: "Calculate compact statistics in PostgreSQL.",
       parameters: Type.Object({
-        user: User,
         scope: Type.Union([Type.Literal("week"), Type.Literal("month"), Type.Literal("custom"),
           Type.Literal("route"), Type.Literal("grade"), Type.Literal("projects"), Type.Literal("records"),
           Type.Literal("last_training"), Type.Literal("progress"), Type.Literal("grades"),
@@ -180,7 +172,6 @@ export function createJournalTools() {
     set_climbing_test_mode: operation({
       name: "set_climbing_test_mode", label: "Test mode", description: "Enable or disable automatic test marking for new attempts.",
       parameters: Type.Object({
-        user: User,
         enabled: Type.Boolean(),
       }, { additionalProperties: false }),
     }),
@@ -188,7 +179,6 @@ export function createJournalTools() {
     upsert_climbing_gear: operation({
       name: "upsert_climbing_gear", label: "Save gear", description: "Create or update climbing gear.",
       parameters: Type.Object({
-        user: User,
         gear: Type.Object({
           id: Type.Optional(Type.String()),
           type: Type.Union([Type.Literal("shoes"), Type.Literal("rope"), Type.Literal("harness"),
@@ -210,7 +200,6 @@ export function createJournalTools() {
     get_climbing_trainings: operation({
       name: "get_climbing_trainings", label: "Training history", description: "Read a limited, targeted training history.",
       parameters: Type.Object({
-        userId: Type.Optional(Type.String()), userName: Type.Optional(Type.String()),
         status: Type.Optional(Type.Union([Type.Literal("active"), Type.Literal("completed")])),
         dateFrom: Type.Optional(Type.String()), dateTo: Type.Optional(Type.String()),
         area: Type.Optional(Type.String()), sector: Type.Optional(Type.String()),

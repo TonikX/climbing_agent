@@ -1,0 +1,21 @@
+{
+  "session": { "dmScope": "per-channel-peer" },
+  "agents": {
+    "defaults": {
+      "workspace": "/home/node/.openclaw/workspace",
+      "compaction": { "memoryFlush": { "enabled": false } }
+    }
+  },
+  "plugins": { "slots": { "memory": "none" } },
+  "memory": { "search": { "enabled": false, "rememberAcrossConversations": false } },
+  "hooks": { "internal": { "entries": { "session-memory": { "enabled": false } } } },
+  "tools": {
+    "profile": "minimal",
+    "alsoAllow": ["climbing-journal"],
+    "deny": ["group:fs", "group:runtime", "group:sessions", "group:memory", "group:messaging", "group:ui", "group:automation", "group:web", "bundle-mcp", "skill_workshop", "agents_list"],
+    "sessions": { "visibility": "self" },
+    "agentToAgent": { "enabled": false }
+  },
+  "channels": { "telegram": { "dmPolicy": "allowlist", "groupPolicy": "disabled" } },
+  "commands": { "bash": false, "config": false, "debug": false, "restart": false }
+}

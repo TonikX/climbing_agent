@@ -21,6 +21,16 @@ from app.schemas import TrainingCreate, FinishTraining
 from datetime import date
 
 
+async def test_user(session, name):
+    user = User(name=name)
+    session.add(user)
+    await session.flush()
+    return {"id": user.id}
+
+
+test_user.__test__ = False
+
+
 class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.conn = await engine.connect()
@@ -100,7 +110,7 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
     async def test_tool_rest_update_and_summary_share_outcomes(self):
         await self.conn.run_sync(Base.metadata.create_all)
         async with AsyncSession(bind=self.conn, expire_on_commit=False) as session:
-            user = {"name": "Outcome test"}
+            user = await test_user(session, "Outcome test")
             training = await _start(session, {"user": user, "date": "2026-09-28"})
             session.expire_all()
             first = await _append(session, {"user": user, "date": "2026-09-28", "name": "Route A",
@@ -127,7 +137,7 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
     async def test_past_training_cannot_share_active_route_session(self):
         await self.conn.run_sync(Base.metadata.create_all)
         async with AsyncSession(bind=self.conn, expire_on_commit=False) as session:
-            user = {"name": "Past training test"}
+            user = await test_user(session, "Past training test")
             await _start(session, {"user": user, "date": "2026-10-05"})
             await _append(session, {"user": user, "date": "2026-10-05", "name": "R", "cleanAscent": True})
             await _save(session, {"user": user, "date": "2026-10-04", "routes": [{"name": "R", "cleanAscent": False}]})
@@ -137,7 +147,7 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
     async def test_ambiguous_summary_is_rejected_without_adding_attempts(self):
         await self.conn.run_sync(Base.metadata.create_all)
         async with AsyncSession(bind=self.conn, expire_on_commit=False) as session:
-            user = {"name": "Merge test"}
+            user = await test_user(session, "Merge test")
             await _start(session, {"user": user, "date": "2026-10-05"})
             for clean in (False, True):
                 await _append(session, {"user": user, "date": "2026-10-05", "name": "R", "cleanAscent": clean})
@@ -151,7 +161,7 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
     async def test_rest_and_bot_group_attempts_and_obey_test_mode(self):
         await self.conn.run_sync(Base.metadata.create_all)
         async with AsyncSession(bind=self.conn, expire_on_commit=False) as session:
-            user = {"name": "REST test"}
+            user = await test_user(session, "REST test")
             training = await _start(session, {"user": user, "date": "2026-10-05"})
             uid = await session.scalar(text("SELECT id FROM users LIMIT 1"))
             first = await append_attempt(session, uid, training["trainingId"], AttemptCreate(name="R", clean_ascent=False))
@@ -169,7 +179,7 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
     async def test_replay_and_payload_conflict_and_deletion_numbering(self):
         await self.conn.run_sync(Base.metadata.create_all)
         async with AsyncSession(bind=self.conn, expire_on_commit=False) as session:
-            user = {"name": "Replay test"}
+            user = await test_user(session, "Replay test")
             await execute_tool(session, "start_climbing_training", {"user": user, "date": "2026-10-05"}, "start")
             payload = {"user": user, "date": "2026-10-05", "name": "R", "cleanAscent": False}
             first = await execute_tool(session, "append_climbing_attempt", payload, "one")

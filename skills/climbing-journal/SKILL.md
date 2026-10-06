@@ -8,6 +8,10 @@ description: Record and query structured climbing training data.
 Use journal tools for climbing records. PostgreSQL state is authoritative;
 conversation history is not.
 
+The backend selects the authenticated Telegram user automatically. Never pass
+user, userId or userName, look up an account by display name, or reuse data from
+another conversation. Profile commands: /profile, /profile_name, /timezone.
+
 - New physical attempt → `append_climbing_attempt`.
 - “Ещё одна”, “до N”, “пролез” → `continueCurrentRoute=true` unless another route is named.
 - Corrections (“нет”, “исправь”, “было N”) → `update_climbing_attempt` with `useLastAttempt=true`.
@@ -30,7 +34,8 @@ conversation history is not.
 - “Не долез / спустился с середины” means reachedTop=false, cleanAscent=false.
 - Missing facts are null, never false by default. Do not use the legacy `result` field.
 - For corrections, send only changed facts. Use explicit null to clear an unconfirmed fact.
-- Style is independent. Never infer a clean ascent from style or reaching the top.
+- Flash, onsight and redpoint imply a clean ascent unless a fall or hang is reported.
+- Reaching the top alone does not imply a clean ascent; explicit corrections win.
 - A first-attempt send is not automatically onsight or flash.
 - A clean send after previous attempts is redpoint.
 - Voice transcript is handled exactly like text; ignore transport and audio metadata.
@@ -40,5 +45,8 @@ Use `save_climbing_training(mergeIntoActive=true)` for a final summary that may
 repeat earlier events, then `finish_climbing_training` when the user ends the
 session. Use `update_climbing_training` for duration, location, weather, gear,
 physical state, or general notes.
+
+If merging a summary returns 409 for multiple matching attempts, inspect and
+correct those attempts by attemptId. Never append the summary as an extra attempt.
 
 Detailed behavior is documented in `docs/journal-behavior.md`.

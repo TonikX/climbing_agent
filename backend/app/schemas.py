@@ -1,7 +1,35 @@
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+class TelegramLogin(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    telegram_id: str = Field(pattern=r"^[1-9][0-9]{0,19}$")
+
+
+class ProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    timezone: str | None = Field(default=None, min_length=1, max_length=100)
+
+    @field_validator("name", "timezone")
+    @classmethod
+    def non_null(cls, value):
+        if value is None:
+            raise ValueError("Use an omitted field rather than null")
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_timezone(cls, value):
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("Unknown IANA timezone")
+        return value
 
 
 class UserResolveRequest(BaseModel):

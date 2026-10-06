@@ -39,13 +39,24 @@ training_gear = Table(
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (CheckConstraint("status IN ('active', 'blocked')", name="ck_user_status"),)
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: new_id("user"))
     name: Mapped[str] = mapped_column(String(200))
     timezone: Mapped[str] = mapped_column(String(100), default="Europe/Moscow")
+    status: Mapped[str] = mapped_column(String(20), default="active", server_default=text("'active'"))
     test_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     external_refs: Mapped[list["ExternalRef"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     gear: Mapped[list["Gear"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: new_id("auth"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
 class Location(Base):
