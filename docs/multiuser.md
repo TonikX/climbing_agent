@@ -48,9 +48,12 @@ docker compose run --rm --no-deps --entrypoint node openclaw-gateway \
 docker compose run --rm --no-deps --entrypoint node openclaw-gateway \
   dist/index.js config validate
 docker compose up -d --no-deps openclaw-gateway
+docker compose up -d --no-deps --no-build --force-recreate nginx
 docker compose exec -T nginx nginx -t
-docker compose exec -T nginx nginx -s reload
 ```
+
+Nginx пересоздаётся, чтобы перечитать bind mount конфигурации: после git pull
+одного reload недостаточно, если файл заменён новым inode.
 
 Перед применением проверить отсутствие других agents.entries/list с отдельными
 workspace/tool overrides и tools.allow: они могут конфликтовать с общим профилем.
@@ -107,3 +110,20 @@ OpenClaw и медиа и истечение резервных копий; SQL 
 тренировки и снаряжение, изоляция статистики/idempotency, экспорт и удаление.
 Тесты плагина проверяют runtime identity, разные кеши токенов и сохранение ключа
 при обновлении сессии. Авторизация и профиль по кнопкам не вызывают LLM.
+
+## Развёртывание 6 октября 2026
+
+Версия 0.7.0, коммит 8e17f12; применена миграция 20261005_0011. Рабочий каталог:
+/srv/climbing-journal/openclaw/workspace-pilot. Список доступа оставлен закрытым
+для одного существующего владельца; command owner задан явно.
+
+Резервная копия: /srv/climbing-journal/backups/multiuser-070-20261006T144900Z.
+В ней postgres.dump, конфигурация, архив состояния OpenClaw, контрольные суммы
+владельцев и rollback.sh. Старые образы закреплены тегами rollback-070-20261006.
+Откат меняет образы и конфигурацию без восстановления БД поверх новых данных.
+
+После переключения сохранены 4 аккаунта, 15 тренировок и 35 попыток, включая
+тестовые записи. Проверены профиль, меню журнала, последняя тренировка, все её
+попытки и статистика месяца через новые обработчики с работающим API.
+API /ready возвращает 200; доступ к /me без сессии — 401; внутренний bootstrap
+через nginx — 404. Gateway /healthz и /readyz подтвердили готовность.
