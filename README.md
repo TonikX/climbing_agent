@@ -17,6 +17,9 @@ Telegram ↔ OpenClaw ────────────┘
 
 FastAPI MVP и примеры запросов: [`docs/api.md`](docs/api.md).
 
+ТЗ публичного сервиса на 10 000 пользователей / 1 000 активных в день:
+[`docs/public-multiuser-spec.md`](docs/public-multiuser-spec.md).
+
 ## Разработка
 
 Нужен Node.js 24 (на сервере проверен 24.19.0).
