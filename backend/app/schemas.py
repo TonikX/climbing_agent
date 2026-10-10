@@ -44,15 +44,22 @@ class UserResponse(BaseModel):
     id: str
     name: str
     timezone: str
+    status: str
+    role: str
 
 
 class TrainingCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     date: date
     environment: Literal["indoor", "outdoor", "unknown"] = "unknown"
     notes: str | None = None
+    location_id: str | None = None
+    section_id: str | None = None
+    gear_ids: list[str] = Field(default_factory=list, max_length=50)
 
 
 class AttemptCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     route_id: str | None = None
     name: str | None = None
     grade: str | None = None
@@ -63,6 +70,7 @@ class AttemptCreate(BaseModel):
     reached_top: bool | None = None
     clean_ascent: bool | None = None
     falls: int | None = Field(default=None, ge=0)
+    hangs: int | None = Field(default=None, ge=0)
     style: Literal["onsight", "flash", "redpoint", "unknown"] = "unknown"
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] = "unknown"
     feel: Literal["easy", "comfortable", "limit", "unknown"] = "unknown"
@@ -71,6 +79,8 @@ class AttemptCreate(BaseModel):
 
 
 class FinishTraining(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cancel_pending: bool = False
     duration_minutes: int | None = Field(default=None, ge=1)
     physical_state: str | None = None
     notes: str | None = None
@@ -84,6 +94,8 @@ class AttemptResponse(BaseModel):
     reached_top: bool | None
     clean_ascent: bool | None
     style: str
+    hangs: int | None
+    falls: int | None
     belay: str
     feel: str
     notes: str | None
@@ -110,3 +122,8 @@ class TrainingResponse(BaseModel):
 
 class ToolCommand(BaseModel):
     payload: dict[str, Any]
+
+
+class TrainingPage(BaseModel):
+    items: list[TrainingResponse]
+    next_cursor: str | None = None

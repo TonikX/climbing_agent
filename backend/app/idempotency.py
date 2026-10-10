@@ -19,6 +19,8 @@ async def run_mutation(session: AsyncSession, user_id: str, operation: str,
     user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
     if not user:
         raise HTTPException(404, "User not found")
+    if user.status != "active":
+        raise HTTPException(403, "Access requires owner approval")
     request_hash = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"),
                                              ensure_ascii=False).encode()).hexdigest()
     if key:

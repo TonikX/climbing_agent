@@ -1,16 +1,20 @@
 # Climbing Journal
 
-Персональный журнал скалолазных тренировок: OpenClaw/Telegram, FastAPI,
-PostgreSQL и HTTPS через Nginx.
+Журнал скалолазных тренировок: Telegram, FastAPI, PostgreSQL и HTTPS через Nginx.
 
-## Docker Compose
+Версия `1.0.0-beta.1` добавляет многопользовательский режим с подтверждением
+доступа владельцем. Новый стек: `compose.public.yaml`; инструкция запуска и
+незавершённые проверки: [`docs/public-deployment.md`](docs/public-deployment.md).
+Рабочий бот автоматически на эту версию не переводится.
+
+## Предыдущий стек OpenClaw
 
 ```text
 Internet → Nginx → FastAPI → PostgreSQL
 Telegram ↔ OpenClaw ────────────┘
 ```
 
-Для серверного запуска скопируйте `.env.example` в `.env`, заполните секреты и
+Для предыдущего стека скопируйте `.env.example` в `.env`, заполните секреты и
 пути TLS, затем выполните `./scripts/deploy.sh`. Полная инструкция, перенос
 существующего OpenClaw и backup описаны в
 [`docs/docker-deployment.md`](docs/docker-deployment.md).

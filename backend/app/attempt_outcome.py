@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 def has_nonclean_evidence(raw: dict, current=None) -> bool:
     falls = raw.get("falls", getattr(current, "falls", None))
+    hangs = raw.get("hangs", getattr(current, "hangs", None))
     notes = raw.get("notes", getattr(current, "notes", None)) or ""
     # Remove explicit negations before looking for a fall, hang or rope rest.
     normalized = re.sub(
@@ -14,7 +15,7 @@ def has_nonclean_evidence(raw: dict, current=None) -> bool:
         r"\b(?:срыв|завис)\w*(?:\s+и\s+(?:срыв|завис)\w*)?\s+не\s+было\b|"
         r"\bне\s+было\s+(?:срыв|завис)\w*(?:\s+и\s+(?:срыв|завис)\w*)?|"
         r"\bне\s+(?:сорв|завис|повис)\w*", "", normalized)
-    return bool((falls is not None and falls > 0) or re.search(
+    return bool((falls is not None and falls > 0) or (hangs is not None and hangs > 0) or re.search(
         r"срыв|сорв|завис|повис|с\s+перерыв", normalized))
 
 
@@ -24,6 +25,8 @@ def normalized_style(raw: dict, current=None) -> str:
 
 
 def outcome(raw: dict, current=None) -> dict:
+    if "hangs" in raw and raw["hangs"] is not None and (type(raw["hangs"]) is not int or raw["hangs"] < 0):
+        raise HTTPException(422, "hangs must be a non-negative integer or null")
     if any(key in raw and raw[key] is not None and type(raw[key]) is not bool
            for key in ("reachedTop", "cleanAscent")):
         raise HTTPException(422, "reachedTop and cleanAscent must be boolean or null")

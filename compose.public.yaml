@@ -1,0 +1,142 @@
+name: climbing-journal-public
+
+x-runtime: &runtime
+  image: climbing-journal-api:public
+  build:
+    context: ./backend
+    network: host
+  restart: unless-stopped
+  init: true
+  entrypoint: []
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  read_only: true
+  tmpfs: [/tmp]
+  networks: [backend]
+
+x-api-env: &api-env
+  PUBLIC_MODE: "true"
+  INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY}
+  DB_HOST: postgres
+  DB_NAME: ${POSTGRES_DB:-climbing_journal}
+  DB_USER: climbing_runtime
+  DB_PASSWORD: ${RUNTIME_DB_PASSWORD:?Set RUNTIME_DB_PASSWORD}
+  DB_CONTROL_USER: climbing_control_login
+  DB_CONTROL_PASSWORD: ${CONTROL_DB_PASSWORD:?Set CONTROL_DB_PASSWORD}
+  ACCESS_APPROVER_TELEGRAM_ID: ${ACCESS_APPROVER_TELEGRAM_ID:?Set verified owner ID}
+  ACCESS_APPROVAL_CHAT_ID: ${ACCESS_APPROVAL_CHAT_ID:?Set verified private chat ID}
+  TELEGRAM_BOT_ID: ${TELEGRAM_BOT_ID:?Set test bot ID}
+  AI_DAILY_BUDGET_UNITS: ${AI_DAILY_BUDGET_UNITS:-0}
+  AI_CALL_RESERVATION_UNITS: ${AI_CALL_RESERVATION_UNITS:-0}
+  AI_DAILY_REQUESTS: ${AI_DAILY_REQUESTS:-20}
+  AUDIO_DAILY_SECONDS: ${AUDIO_DAILY_SECONDS:-600}
+
+x-worker-env: &worker-env
+  INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+  API_URL: http://api:8000
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?Set test bot token}
+  CLOUDRU_API_KEY: ${CLOUDRU_API_KEY:-}
+  CLOUDRU_MODEL: ${CLOUDRU_MODEL:-deepseek-ai/DeepSeek-V4-Flash}
+  CLOUDRU_ASR_MODEL: ${CLOUDRU_ASR_MODEL:-openai/whisper-large-v3}
+  TELEGRAM_BOT_ID: ${TELEGRAM_BOT_ID}
+  TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+  TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-climbing_journal}
+      POSTGRES_USER: ${MIGRATION_DB_USER:-climbing_migration}
+      POSTGRES_PASSWORD: ${MIGRATION_DB_PASSWORD:?Set migration password}
+    volumes: [public_postgres:/var/lib/postgresql/data]
+    ports: ["127.0.0.1:${POSTGRES_PORT:-25432}:5432"]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+
+  migrate:
+    <<: *runtime
+    restart: "no"
+    command: [python, -m, app.migrate_public]
+    environment:
+      <<: *api-env
+      DB_USER: ${MIGRATION_DB_USER:-climbing_migration}
+      DB_PASSWORD: ${MIGRATION_DB_PASSWORD}
+      RUNTIME_DB_PASSWORD: ${RUNTIME_DB_PASSWORD}
+      CONTROL_DB_PASSWORD: ${CONTROL_DB_PASSWORD}
+      PUBLIC_MIGRATION_MANIFEST: "${PUBLIC_MIGRATION_MANIFEST:-}"
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    <<: *runtime
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000", --no-access-log]
+    environment: *api-env
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 10
+
+  bot:
+    <<: *runtime
+    command: [uvicorn, app.bot:app, --host, 0.0.0.0, --port, "8000", --no-access-log]
+    environment:
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      API_URL: http://api:8000
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:?Set random webhook secret}
+    depends_on:
+      api: {condition: service_healthy}
+
+  worker-fast:
+    <<: *runtime
+    command: [python, -m, app.worker, fast]
+    environment:
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      API_URL: http://api:8000
+    depends_on:
+      api: {condition: service_healthy}
+
+  worker-ai:
+    <<: *runtime
+    command: [python, -m, app.worker, ai]
+    environment: *worker-env
+    networks: [backend, egress]
+    depends_on:
+      api: {condition: service_healthy}
+
+  worker-delivery:
+    <<: *runtime
+    command: [python, -m, app.worker, delivery]
+    environment:
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      API_URL: http://api:8000
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    networks: [backend, egress]
+    depends_on:
+      api: {condition: service_healthy}
+
+  nginx:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    ports: ["${NGINX_HTTP_PORT:-8080}:80", "${NGINX_HTTPS_PORT:-8443}:443"]
+    volumes:
+      - ./deploy/nginx/public.conf:/etc/nginx/nginx.conf:ro
+      - ${TLS_CERT_PATH:?Set TLS certificate path}:/etc/nginx/tls/fullchain.pem:ro
+      - ${TLS_KEY_PATH:?Set TLS key path}:/etc/nginx/tls/privkey.pem:ro
+    depends_on: [api, bot]
+    networks: [backend, frontend]
+
+volumes:
+  public_postgres:
+networks:
+  backend: {internal: true}
+  egress:
+  frontend:

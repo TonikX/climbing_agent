@@ -7,7 +7,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -48,6 +48,8 @@ def _today(user: User) -> date:
 
 
 async def _add_refs(session: AsyncSession, entity_type: str, owner: Any, refs: Any) -> None:
+    if entity_type != "user" and refs and not session.info.get("catalog_import"):
+        raise _bad("Source references may only be assigned by a trusted importer", 403)
     owner_field = {"user": "user_id", "location": "location_id", "section": "section_id", "route": "route_id"}[entity_type]
     for raw in refs or []:
         if not isinstance(raw, dict) or not raw.get("system") or not raw.get("id"):
@@ -89,7 +91,30 @@ async def _user(session: AsyncSession, raw: dict[str, Any]) -> User:
         raise _bad("Authenticated user not found", 404)
     if item.status != "active":
         raise _bad("Account is blocked", 403)
+    from app.db import set_user_context
+    await set_user_context(session, item.id)
     return item
+
+
+async def _catalog_area(session: AsyncSession, item: Any) -> Location:
+    if isinstance(item, Location):
+        return item
+    section = item if isinstance(item, Section) else await session.get(Section, item.section_id)
+    return await session.get(Location, section.location_id) if section else None
+
+
+async def _visible(session: AsyncSession, item: Any) -> None:
+    if item:
+        area = await _catalog_area(session, item)
+        if not area or not (area.visibility == "public" or area.owner_id == session.info.get("user_id")):
+            raise _bad("Catalogue item not found", 404)
+
+
+async def _writable(session: AsyncSession, item: Any) -> None:
+    await _visible(session, item)
+    area = await _catalog_area(session, item)
+    if area.visibility != "private" or area.owner_id != session.info.get("user_id"):
+        raise _bad("The public catalogue is read-only", 403)
 
 
 async def _area(session: AsyncSession, raw: dict[str, Any] | None) -> Location | None:
@@ -98,15 +123,25 @@ async def _area(session: AsyncSession, raw: dict[str, Any] | None) -> Location |
     item = await session.get(Location, str(raw["id"])) if raw.get("id") else None
     item = item or await _by_ref(session, "location", raw.get("externalRefs"))
     if not item and raw.get("name"):
-        item = await session.scalar(select(Location).where(func.lower(Location.name) == _norm(raw["name"])))
+        item = await session.scalar(select(Location).where(
+            Location.owner_id == session.info.get("user_id"), Location.visibility == "private",
+            Location.type == raw.get("type", "outdoor"),
+            func.lower(Location.name) == _norm(raw["name"]),
+            func.lower(func.coalesce(Location.country, "")) == _norm(raw.get("country"))))
+    if raw.get("id") and not item:
+        raise _bad("Area not found", 404)
+    await _visible(session, item)
     if not item:
         if not raw.get("name"):
             raise _bad("Cannot create an area without a name")
-        item = Location(type="outdoor", name=str(raw["name"]), country=raw.get("country"),
+        if not session.info.get("user_id"):
+            raise _bad("Owner context required", 403)
+        item = Location(owner_id=session.info["user_id"], visibility="private", type=raw.get("type", "outdoor"), name=str(raw["name"]), country=raw.get("country"),
                         latitude=raw.get("latitude"), longitude=raw.get("longitude"))
         session.add(item)
         await session.flush()
     elif raw.get("country") and not item.country:
+        await _writable(session, item)
         item.country = str(raw["country"])
     await _add_refs(session, "location", item, raw.get("externalRefs"))
     return item
@@ -117,6 +152,9 @@ async def _section(session: AsyncSession, area: Location | None, raw: dict[str, 
         return None
     item = await session.get(Section, str(raw["id"])) if raw.get("id") else None
     item = item or await _by_ref(session, "section", raw.get("externalRefs"))
+    if raw.get("id") and not item:
+        raise _bad("Sector not found", 404)
+    await _visible(session, item)
     if not item and raw.get("name") and area:
         item = await session.scalar(select(Section).where(
             Section.location_id == area.id, func.lower(Section.name) == _norm(raw["name"])))
@@ -127,7 +165,8 @@ async def _section(session: AsyncSession, area: Location | None, raw: dict[str, 
             raise _bad("Cannot create a sector without a name")
         if not area:
             raise _bad("An area is required to create a sector")
-        item = Section(location_id=area.id, type="sector", name=str(raw["name"]))
+        await _writable(session, area)
+        item = Section(location_id=area.id, type="wall" if area.type == "gym" else "sector", name=str(raw["name"]))
         session.add(item)
         await session.flush()
     await _add_refs(session, "section", item, raw.get("externalRefs"))
@@ -137,7 +176,9 @@ async def _section(session: AsyncSession, area: Location | None, raw: dict[str, 
 async def _route(session: AsyncSession, section: Section | None, raw: dict[str, Any]) -> Route | None:
     item = await session.get(Route, str(raw["routeId"])) if raw.get("routeId") else None
     item = item or await _by_ref(session, "route", raw.get("externalRefs"))
+    await _visible(session, item)
     if not item and raw.get("name") and section:
+        await _writable(session, section)
         item = await session.scalar(select(Route).where(
             Route.section_id == section.id, func.lower(Route.name) == _norm(raw["name"])))
     if item and section and item.section_id != section.id:
@@ -147,11 +188,12 @@ async def _route(session: AsyncSession, section: Section | None, raw: dict[str, 
         session.add(item)
         await session.flush()
     if item:
-        if raw.get("grade") and not item.grade:
+        if raw.get("grade") and not item.grade and (await _catalog_area(session, item)).visibility == "private":
+            await _writable(session, item)
             item.grade = str(raw["grade"])
         await _add_refs(session, "route", item, raw.get("externalRefs"))
     elif raw.get("routeId"):
-        raise _bad(f"Route {raw['routeId']} does not exist")
+        raise _bad("Route not found", 404)
     return item
 
 
@@ -187,6 +229,8 @@ async def _last_attempt(session: AsyncSession, user_id: str, active_only: bool =
 
 async def _attempt(session: AsyncSession, training: TrainingSession, area: Location | None,
                    default_section: Section | None, raw: dict[str, Any], *, force_test: bool = False) -> RouteAttempt:
+    await _visible(session, area)
+    await _visible(session, default_section)
     previous = await _last_attempt(session, training.user_id, training_id=training.id)
     is_test = bool(raw.get("isTest", False) or force_test)
     continuing = bool(raw.get("continueCurrentRoute"))
@@ -235,7 +279,7 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
         attempts=int(raw.get("attempts") or 1), **facts,
         style=style, belay=str(raw.get("belay") or "unknown"),
         feel=str(raw.get("feel") or "unknown"), notes=raw.get("notes"),
-        high_point=raw.get("highPoint"), total_moves=raw.get("totalMoves"), falls=falls,
+        high_point=raw.get("highPoint"), total_moves=raw.get("totalMoves"), falls=falls, hangs=raw.get("hangs"),
         is_test=is_test,
         route_snapshot={"name": raw.get("name") or (route.name if route else None),
                         "grade": raw.get("grade") or (route.grade if route else None),
@@ -253,13 +297,14 @@ def _attempt_dict(item: RouteAttempt, route: Route | None = None, section: Secti
     return {"id": item.id, "number": item.attempt_number, "routeId": item.route_id,
             "routeSessionKey": item.route_session_key, "routeSnapshot": item.route_snapshot, "belay": item.belay,
             "attempts": item.attempts, "reachedTop": item.reached_top, "cleanAscent": item.clean_ascent, "style": item.style, "feel": item.feel,
-            "highPoint": item.high_point, "totalMoves": item.total_moves, "falls": item.falls,
+            "highPoint": item.high_point, "totalMoves": item.total_moves, "falls": item.falls, "hangs": item.hangs,
             "notes": item.notes, "isTest": item.is_test, "route": _route_dict(route) if route else None,
             "sector": _section_dict(section) if section else None}
 
 
 def _area_dict(item: Location | None) -> dict[str, Any] | None:
     return None if not item else {"id": item.id, "name": item.name, "country": item.country,
+                                  "type": item.type, "visibility": item.visibility,
                                   "latitude": float(item.latitude) if item.latitude is not None else None,
                                   "longitude": float(item.longitude) if item.longitude is not None else None}
 
@@ -283,8 +328,7 @@ async def _start(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     user = await _user(session, p["user"])
     current = await _active(session, user.id)
     if current:
-        current.status, current.completed_at = "completed", datetime.now(UTC)
-        current.version += 1
+        raise _bad("Finish the current training before starting another", 409)
     area = await _area(session, p.get("area"))
     section = await _section(session, area, p.get("sector"))
     item = TrainingSession(user_id=user.id, status="active", local_date=_date(p["date"]) if p.get("date") else _today(user),
@@ -379,7 +423,7 @@ async def _save(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
             facts = outcome(raw, item)
             style = normalized_style(raw, item)
             for key, value in facts.items(): setattr(item, key, value)
-            for source, target in (("attempts", "attempts"), ("falls", "falls"),
+            for source, target in (("attempts", "attempts"), ("falls", "falls"), ("hangs", "hangs"),
                                    ("belay", "belay"), ("feel", "feel"), ("notes", "notes")):
                 if source in raw and (raw[source] is not None or source == "falls"):
                     setattr(item, target, raw[source])
@@ -439,7 +483,7 @@ async def _update_attempt(session: AsyncSession, p: dict[str, Any]) -> dict[str,
     for key, value in facts.items(): setattr(item, key, value)
     updated: dict[str, Any] = {"reachedTop": item.reached_top, "cleanAscent": item.clean_ascent}
     mapping = {
-        "highPoint": "high_point", "totalMoves": "total_moves", "falls": "falls",
+        "highPoint": "high_point", "totalMoves": "total_moves", "falls": "falls", "hangs": "hangs", "belay": "belay", "isTest": "is_test",
         "feel": "feel", "notes": "notes",
     }
     for source, target in mapping.items():
@@ -477,13 +521,21 @@ def _grade_rank(value: str | None) -> tuple[int, int, int, int]:
     return (*max(ranks, default=(-1, -1, -1)), -1 if len(ranks) > 1 else 0)
 
 
+def _historical_grade(attempt: RouteAttempt) -> str | None:
+    # An explicitly unknown historical grade must not change after catalogue edits.
+    snapshot = attempt.route_snapshot or {}
+    if "grade" in snapshot:
+        return snapshot["grade"]
+    return attempt.route.grade if attempt.route else None
+
+
 def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
     attempts = [a for a in attempts if not a.is_test]
     sessions = {a.route_session_key or a.id for a in attempts}
     completed = {a.route_session_key or a.id for a in attempts if a.clean_ascent is True}
     reached = {a.route_session_key or a.id for a in attempts if a.reached_top is True}
     projects = sessions - completed
-    grades = [(a.route_snapshot or {}).get("grade") or (a.route.grade if a.route else None) for a in attempts]
+    grades = [_historical_grade(a) for a in attempts]
     max_grade = max((grade for grade in grades if grade), key=_grade_rank, default=None)
     def session_max(keys):
         return max((grade for a, grade in zip(attempts, grades)
@@ -547,7 +599,7 @@ def _grade_breakdown(attempts: list[RouteAttempt]) -> list[dict[str, Any]]:
     for a in attempts:
         if a.is_test:
             continue
-        grade = (a.route_snapshot or {}).get("grade") or (a.route.grade if a.route else None)
+        grade = _historical_grade(a)
         grouped.setdefault(grade or "Без категории", []).append(a)
     return [{"grade": grade, **_summary(values)} for grade, values in
             sorted(grouped.items(), key=lambda item: _grade_rank(item[0]), reverse=True)]
@@ -600,7 +652,7 @@ async def _get_current(session: AsyncSession, p: dict[str, Any]) -> dict[str, An
     if not training:
         return {"active": False, "testMode": user.test_mode_enabled}
     area = await session.get(Location, training.primary_location_id) if training.primary_location_id else None
-    attempts = [a for a in training.attempts if not a.is_test]
+    attempts = [a for a in training.attempts if p.get("includeTest") or not a.is_test]
     response: dict[str, Any] = {
         "active": True, "id": training.id, "status": training.status,
         "testMode": user.test_mode_enabled,
@@ -635,8 +687,8 @@ def _filter_statistics_rows(rows, p: dict[str, Any]):
     route_name, grade = _norm(p.get("route")), _norm(p.get("grade"))
     def matches(attempt):
         snapshot = attempt.route_snapshot or {}
-        name = _norm(snapshot.get("name") or (attempt.route.name if attempt.route else None))
-        category = _norm(snapshot.get("grade") or (attempt.route.grade if attempt.route else None))
+        name = _norm(snapshot.get("name", attempt.route.name if attempt.route else None))
+        category = _norm(snapshot.get("grade", attempt.route.grade if attempt.route else None))
         return (not p.get("routeId") or attempt.route_id == p["routeId"]) and \
                (not route_name or route_name in name) and (not grade or grade == category)
     return [(training, attempt) for training, attempt in rows if matches(attempt)]
@@ -721,7 +773,8 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
         for training, attempt in rows:
             grouped_rows.setdefault(training.primary_location_id, []).append(attempt)
             training_by_location.setdefault(training.primary_location_id, set()).add(training.id)
-        locations = {location.id: location for location in (await session.scalars(select(Location))).all()}
+        locations = {location.id: location for location in (await session.scalars(
+            select(Location).where(Location.id.in_([key for key in grouped_rows if key])))).all()}
         result["locations"] = [
             {"location": _area_dict(locations.get(location_id)),
              "trainingsCount": len(training_by_location[location_id]), **_summary(values)}
@@ -732,16 +785,13 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
         result["periods"] = _progress_periods(rows)
     elif scope == "records":
         completed = [attempt for attempt in attempts if attempt.clean_ascent is True]
-        completed_grades = [(attempt.route_snapshot or {}).get("grade") or
-                            (attempt.route.grade if attempt.route else None) for attempt in completed]
+        completed_grades = [_historical_grade(attempt) for attempt in completed]
         result["records"] = {
             "highestCompletedGrade": max((grade for grade in completed_grades if grade), key=_grade_rank, default=None),
-            "highestFlashGrade": max(((attempt.route_snapshot or {}).get("grade") or
-                                      (attempt.route.grade if attempt.route else None)
+            "highestFlashGrade": max((_historical_grade(attempt)
                                       for attempt in completed if attempt.style == "flash"),
                                      key=_grade_rank, default=None),
-            "highestRedpointGrade": max(((attempt.route_snapshot or {}).get("grade") or
-                                         (attempt.route.grade if attempt.route else None)
+            "highestRedpointGrade": max((_historical_grade(attempt)
                                          for attempt in completed if attempt.style == "redpoint"),
                                         key=_grade_rank, default=None),
             "totalTrainings": result["trainingsCount"],
@@ -766,7 +816,7 @@ async def _finish(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
 async def _upsert_gear(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     user, raw = await _user(session, p["user"]), p["gear"]
     item = await session.get(Gear, str(raw["id"])) if raw.get("id") else None
-    if item and item.user_id != user.id: raise _bad("Unknown gear ID for this user")
+    if raw.get("id") and (not item or item.user_id != user.id): raise _bad("Gear not found", 404)
     if not item:
         item = await session.scalar(select(Gear).where(
             Gear.user_id == user.id, Gear.type == raw["type"],
@@ -783,8 +833,16 @@ async def _upsert_gear(session: AsyncSession, p: dict[str, Any]) -> dict[str, An
 
 
 async def _find_routes(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
-    items = list((await session.scalars(select(Route).options(
-        selectinload(Route.section).selectinload(Section.location)))).all())
+    user = await _user(session, p["user"])
+    query = select(Route).join(Section).join(Location).where(
+        or_(Location.visibility == "public", Location.owner_id == user.id))
+    for key, column in (("name", Route.name), ("sector", Section.name), ("area", Location.name)):
+        if p.get(key):
+            query = query.where(column.ilike("%" + str(p[key]).replace("%", "\\%").replace("_", "\\_") + "%"))
+    if p.get("grade"):
+        query = query.where(func.lower(Route.grade) == _norm(p["grade"]))
+    items = list((await session.scalars(query.options(
+        selectinload(Route.section).selectinload(Section.location)).order_by(Route.id).limit(100))).all())
     result = []
     for item in items:
         section, area = item.section, item.section.location
@@ -815,8 +873,8 @@ async def _get_trainings(session: AsyncSession, p: dict[str, Any], *, export_all
             route, snapshot = a.route, a.route_snapshot or {}
             section = route.section if route else next((s for s in item.sections if s.id == snapshot.get("sectorId")), None)
             return (not p.get("sector") or _norm(p["sector"]) in _norm(section.name if section else None)) and \
-                   (not p.get("route") or _norm(p["route"]) in _norm(snapshot.get("name") or (route.name if route else None))) and \
-                   (not p.get("grade") or _norm(p["grade"]) == _norm(snapshot.get("grade") or (route.grade if route else None)))
+                   (not p.get("route") or _norm(p["route"]) in _norm(snapshot.get("name", route.name if route else None))) and \
+                   (not p.get("grade") or _norm(p["grade"]) == _norm(snapshot.get("grade", route.grade if route else None)))
         if (p.get("sector") or p.get("route") or p.get("grade")) and not any(attempt_matches(a) for a in attempts): continue
         result.append({"id": item.id, "userId": item.user_id, "status": item.status,
                        "createdAt": item.created_at.isoformat(), "completedAt": item.completed_at.isoformat() if item.completed_at else None,
@@ -852,6 +910,7 @@ async def execute_tool(session: AsyncSession, operation: str, payload: dict[str,
                        idempotency_key: str | None = None) -> dict[str, Any]:
     handler = HANDLERS.get(operation)
     if not handler: raise _bad("Unknown climbing operation", 404)
+    await _user(session, payload.get("user") or {})
     if operation not in READ_OPERATIONS:
         user = await _user(session, payload["user"])
         return await run_mutation(session, user.id, operation, idempotency_key, payload,

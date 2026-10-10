@@ -23,12 +23,12 @@ async def telegram_login(session: AsyncSession, telegram_id: str) -> dict:
     user = await session.scalar(select(User).join(ExternalRef, ExternalRef.user_id == User.id).where(
         ExternalRef.system == "telegram", ExternalRef.entity_type == "user", ExternalRef.external_id == telegram_id).with_for_update())
     if not user:
-        user = User(name="Скалолаз", timezone="Europe/Moscow", status="active")
+        user = User(name="Скалолаз", timezone="Europe/Moscow", status="pending_approval")
         session.add(user)
         await session.flush()
         session.add(ExternalRef(system="telegram", entity_type="user", external_id=telegram_id, user_id=user.id))
     if user.status != "active":
-        raise HTTPException(403, "Account is blocked")
+        raise HTTPException(403, "Access requires owner approval")
     now = datetime.now(UTC)
     await session.execute(delete(AuthSession).where(AuthSession.user_id == user.id, AuthSession.expires_at <= now))
     token = secrets.token_urlsafe(32)

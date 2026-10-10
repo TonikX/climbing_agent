@@ -39,11 +39,17 @@ training_gear = Table(
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = (CheckConstraint("status IN ('active', 'blocked')", name="ck_user_status"),)
+    __table_args__ = (
+        CheckConstraint("status IN ('pending_approval', 'active', 'blocked')", name="ck_user_status"),
+        CheckConstraint("role IN ('user', 'support', 'admin')", name="ck_user_role"),
+    )
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: new_id("user"))
     name: Mapped[str] = mapped_column(String(200))
     timezone: Mapped[str] = mapped_column(String(100), default="Europe/Moscow")
-    status: Mapped[str] = mapped_column(String(20), default="active", server_default=text("'active'"))
+    status: Mapped[str] = mapped_column(String(20), default="pending_approval", server_default=text("'pending_approval'"))
+    role: Mapped[str] = mapped_column(String(20), default="user", server_default=text("'user'"))
+    last_fast_job_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_ai_job_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     test_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     external_refs: Mapped[list["ExternalRef"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -61,8 +67,13 @@ class AuthSession(Base):
 
 class Location(Base):
     __tablename__ = "locations"
-    __table_args__ = (CheckConstraint("type IN ('outdoor', 'gym')", name="ck_location_type"),)
+    __table_args__ = (
+        CheckConstraint("type IN ('outdoor', 'gym')", name="ck_location_type"),
+        CheckConstraint("(visibility='private' AND owner_id IS NOT NULL) OR (visibility='public' AND owner_id IS NULL)", name="ck_location_visibility"),
+    )
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: new_id("location"))
+    owner_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    visibility: Mapped[str] = mapped_column(String(20), default="private", server_default=text("'private'"))
     type: Mapped[str] = mapped_column(String(20))
     name: Mapped[str] = mapped_column(String(200), index=True)
     country: Mapped[str | None] = mapped_column(String(200))
@@ -174,6 +185,8 @@ class RouteAttempt(Base):
         CheckConstraint("result IN ('send', 'project', 'attempted', 'unknown')", name="ck_attempt_result"),
         CheckConstraint("clean_ascent IS NOT TRUE OR reached_top IS TRUE", name="ck_attempt_clean_top"),
         CheckConstraint("clean_ascent IS NOT TRUE OR falls IS NULL OR falls = 0", name="ck_attempt_clean_falls"),
+        CheckConstraint("hangs IS NULL OR hangs >= 0", name="ck_attempt_hangs"),
+        CheckConstraint("clean_ascent IS NOT TRUE OR hangs IS NULL OR hangs = 0", name="ck_attempt_clean_hangs"),
         CheckConstraint("reached_top IS NOT FALSE OR clean_ascent IS FALSE", name="ck_attempt_no_top"),
         CheckConstraint("style IN ('onsight', 'flash', 'redpoint', 'unknown')", name="ck_attempt_style"),
         CheckConstraint("belay IN ('lead', 'top_rope', 'auto_belay', 'bouldering', 'unknown')", name="ck_attempt_belay"),
@@ -202,6 +215,7 @@ class RouteAttempt(Base):
     high_point: Mapped[int | None] = mapped_column(Integer)
     total_moves: Mapped[int | None] = mapped_column(Integer)
     falls: Mapped[int | None] = mapped_column(Integer)
+    hangs: Mapped[int | None] = mapped_column(Integer)
     is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     route_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
@@ -249,3 +263,7 @@ class ExternalRef(Base):
     location: Mapped[Location | None] = relationship(back_populates="external_refs")
     section: Mapped[Section | None] = relationship(back_populates="external_refs")
     route: Mapped[Route | None] = relationship(back_populates="external_refs")
+
+
+# Register the queue tables in the same metadata for Alembic and isolated tests.
+from app import public_models as _public_models  # noqa: E402,F401

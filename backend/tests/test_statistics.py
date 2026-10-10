@@ -16,6 +16,14 @@ def attempt(key, sequence, result="send", style="unknown", is_test=False):
 
 
 class StatisticsTest(unittest.TestCase):
+    def test_unknown_snapshot_grade_does_not_follow_catalogue_edits(self):
+        item = attempt("historical", 1)
+        item.route_snapshot = {"grade": None}
+        item.route = SimpleNamespace(grade="7A")
+        self.assertIsNone(_summary([item])["maxAttemptedGrade"])
+        item.route_snapshot = {"grade": "6B"}
+        self.assertEqual(_summary([item])["maxAttemptedGrade"], "6B")
+
     def test_split_grade_is_not_concatenated_into_a_two_digit_grade(self):
         self.assertLess(_grade_rank("6B/6B+"), _grade_rank("7A"))
         ordered = ["6B", "6B/6B+", "6B+", "6C"]

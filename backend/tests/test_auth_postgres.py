@@ -14,9 +14,9 @@ from pydantic import SecretStr
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import engine, get_session
+from app.db import engine, get_session, get_control_session
 from app.main import app
-from app.models import AuthSession, Base, User
+from app.models import AuthSession, Base, User, ExternalRef
 
 
 class AuthPostgresTest(unittest.IsolatedAsyncioTestCase):
@@ -33,6 +33,10 @@ class AuthPostgresTest(unittest.IsolatedAsyncioTestCase):
                 async with session.begin():
                     yield session
         app.dependency_overrides[get_session] = session_override
+        from fastapi import Depends
+        async def control_override(session=Depends(get_session, scope="function")):
+            yield session
+        app.dependency_overrides[get_control_session] = control_override
         self.settings = patch("app.security.get_settings", return_value=SimpleNamespace(internal_api_key=SecretStr("test-auth-key")))
         self.settings.start()
         self.client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
@@ -46,6 +50,16 @@ class AuthPostgresTest(unittest.IsolatedAsyncioTestCase):
         await engine.dispose()
 
     async def login(self, telegram_id):
+        # Admission is explicit in fixtures; public registration never grants access.
+        existing = await self.conn.scalar(select(ExternalRef.user_id).where(
+            ExternalRef.system == "telegram", ExternalRef.external_id == telegram_id))
+        if not existing:
+            async with AsyncSession(bind=self.conn, expire_on_commit=False, join_transaction_mode="create_savepoint") as fixture:
+                user = User(name="Скалолаз", status="active")
+                fixture.add(user)
+                await fixture.flush()
+                fixture.add(ExternalRef(system="telegram", entity_type="user", external_id=telegram_id, user_id=user.id))
+                await fixture.commit()
         result = await self.client.post("/api/v1/internal/auth/telegram", json={"telegram_id": telegram_id},
                                         headers={"X-API-Key": "test-auth-key"})
         self.assertEqual(result.status_code, 200, result.text)
@@ -90,7 +104,7 @@ class AuthPostgresTest(unittest.IsolatedAsyncioTestCase):
         attempt_b = added.json()["attemptId"]
         gear_b = (await self.tool(b,"upsert_climbing_gear",{"gear":{"type":"shoes","brand":"B"}})).json()["gear"]["id"]
         denied_gear = await self.tool(a,"upsert_climbing_gear",{"gear":{"id":gear_b,"type":"shoes","brand":"attack"}})
-        self.assertEqual(denied_gear.status_code, 400)
+        self.assertEqual(denied_gear.status_code, 404)
         denied_link = await self.tool(a,"start_climbing_training",{"gearIds":[gear_b]})
         self.assertEqual(denied_link.status_code, 400)
         for operation, payload in (
@@ -113,7 +127,7 @@ class AuthPostgresTest(unittest.IsolatedAsyncioTestCase):
         exported = await self.client.get("/api/v1/me/export", headers=a)
         self.assertIn("Private A", exported.text)
         self.assertNotIn("Private B", exported.text)
-        self.assertEqual(len((await self.client.get("/api/v1/trainings", headers=a)).json()), 1)
+        self.assertEqual(len((await self.client.get("/api/v1/trainings", headers=a)).json()["items"]), 1)
 
     async def test_expired_blocked_and_deleted_accounts(self):
         a, b = await self.login("501"), await self.login("502")
@@ -130,7 +144,9 @@ class AuthPostgresTest(unittest.IsolatedAsyncioTestCase):
         gear = await self.tool(a, "upsert_climbing_gear", {"gear":{"type":"shoes","brand":"A"}})
         await self.tool(a, "start_climbing_training", {"gearIds":[gear.json()["gear"]["id"]]})
         await self.tool(a, "append_climbing_attempt", {"name":"A"})
-        self.assertEqual((await self.client.delete("/api/v1/me", headers=a)).status_code, 204)
+        self.assertEqual((await self.client.delete("/api/v1/me", headers=a)).status_code, 422)
+        confirmation = (await self.client.post("/api/v1/account-deletion", headers=a)).json()["confirmation"]
+        self.assertEqual((await self.client.delete("/api/v1/me", params={"confirmation": confirmation}, headers=a)).status_code, 204)
         self.assertEqual((await self.client.get("/api/v1/me", headers=a)).status_code, 401)
         self.assertEqual((await self.client.get("/api/v1/me", headers=b)).status_code, 200)
         for table in ("training_sessions", "gear", "auth_sessions", "external_refs"):

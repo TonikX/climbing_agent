@@ -228,6 +228,7 @@ data/
 .env
 .env.*
 !.env.example
+!.env.public.example
 backups/
 coverage/
 *.log

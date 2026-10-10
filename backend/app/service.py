@@ -1,12 +1,12 @@
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, with_loader_criteria
 
 from app.models import ExternalRef, Location, RouteAttempt, Section, TrainingSession, TrainingStatus, User
-from app.tool_service import _attempt
+from app.tool_service import _attempt, _user, _visible, _gear_ids
 from app.schemas import AttemptCreate, FinishTraining, TrainingCreate, UserResolveRequest
 
 async def resolve_user(session: AsyncSession, command: UserResolveRequest) -> User:
@@ -29,7 +29,7 @@ async def resolve_user(session: AsyncSession, command: UserResolveRequest) -> Us
 
 
 async def start_training(session: AsyncSession, user_id: str, command: TrainingCreate) -> TrainingSession:
-    user = await session.get(User, user_id)
+    user = await _user(session, {"id": user_id})
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     active = await session.scalar(
@@ -39,10 +39,22 @@ async def start_training(session: AsyncSession, user_id: str, command: TrainingC
         ).with_for_update()
     )
     if active:
-        active.status = TrainingStatus.COMPLETED.value
-        active.completed_at = datetime.now(UTC)
-        active.version += 1
+        raise HTTPException(409, "Finish the current training before starting another")
+    location = await session.get(Location, command.location_id) if command.location_id else None
+    section = await session.get(Section, command.section_id) if command.section_id else None
+    if command.location_id and not location or command.section_id and not section:
+        raise HTTPException(404, "Catalogue item not found")
+    await _visible(session, location)
+    await _visible(session, section)
+    if section:
+        if location and section.location_id != location.id:
+            raise HTTPException(422, "Section belongs to another location")
+        location = location or await session.get(Location, section.location_id)
     training = TrainingSession(
+        primary_location_id=location.id if location else None,
+        sections=[section] if section else [],
+        gear=await _gear_ids(session, user_id, command.gear_ids),
+        started_at=datetime.now(UTC),
         user_id=user_id,
         local_date=command.date,
         timezone=user.timezone,
@@ -55,9 +67,15 @@ async def start_training(session: AsyncSession, user_id: str, command: TrainingC
     return training
 
 async def list_trainings(
-    session: AsyncSession, user_id: str, include_test: bool = False
+    session: AsyncSession, user_id: str, include_test: bool = False, cursor: str | None = None, limit: int = 50
 ) -> list[TrainingSession]:
     query = select(TrainingSession).options(selectinload(TrainingSession.attempts))
+    if cursor:
+        anchor = await session.scalar(select(TrainingSession).where(TrainingSession.id == cursor, TrainingSession.user_id == user_id))
+        if not anchor:
+            raise HTTPException(404, "Training cursor not found")
+        query = query.where(tuple_(TrainingSession.local_date, TrainingSession.created_at, TrainingSession.id) <
+                            tuple_(anchor.local_date, anchor.created_at, anchor.id))
     if not include_test:
         query = query.options(
             with_loader_criteria(RouteAttempt, RouteAttempt.is_test.is_(False), include_aliases=True)
@@ -65,13 +83,14 @@ async def list_trainings(
     return list((await session.scalars(
         query
         .where(TrainingSession.user_id == user_id)
-        .order_by(TrainingSession.local_date.desc(), TrainingSession.created_at.desc())
+        .order_by(TrainingSession.local_date.desc(), TrainingSession.created_at.desc(), TrainingSession.id.desc()).limit(limit)
     )).all())
 
 
 async def append_attempt(
     session: AsyncSession, user_id: str, training_id: str, command: AttemptCreate
 ) -> RouteAttempt:
+    await _user(session, {"id": user_id})
     training = await session.scalar(
         select(TrainingSession).options(selectinload(TrainingSession.sections)).where(
             TrainingSession.id == training_id,
@@ -89,8 +108,9 @@ async def append_attempt(
     section = await session.get(Section, command.section_id) if command.section_id else None
     if command.section_id and not section:
         raise HTTPException(404, "Section not found")
+    await _visible(session, section)
     area = await session.get(Location, training.primary_location_id) if training.primary_location_id else None
-    user = await session.get(User, user_id)
+    user = await _user(session, {"id": user_id})
     return await _attempt(session, training, area, section, raw, force_test=user.test_mode_enabled)
 
 

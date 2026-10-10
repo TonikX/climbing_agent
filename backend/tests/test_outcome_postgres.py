@@ -22,7 +22,7 @@ from datetime import date
 
 
 async def test_user(session, name):
-    user = User(name=name)
+    user = User(name=name, status="active")
     session.add(user)
     await session.flush()
     return {"id": user.id}
@@ -198,7 +198,7 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
     async def test_rest_replay_returns_original_response_after_finish(self):
         await self.conn.run_sync(Base.metadata.create_all)
         async with AsyncSession(bind=self.conn, expire_on_commit=False) as session:
-            user = User(name="REST replay test", test_mode_enabled=True)
+            user = User(name="REST replay test", status="active", test_mode_enabled=True)
             session.add(user)
             await session.flush()
             command = TrainingCreate(date=date(2026, 10, 5))
