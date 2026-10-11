@@ -115,6 +115,28 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         login = await self.client.post("/api/v1/internal/auth/telegram", json={"telegram_id": "2"}, headers={"X-API-Key": "test-auth-key"})
         self.assertEqual(login.status_code, 200, login.text)
 
+    async def test_ai_entry_exits_manual_form_and_saves_interpreted_attempt(self):
+        await self.login("2")
+        await self.send("2", "training:start", True)
+        await self.process()
+        await self.send("2", "attempt:form", True)
+        await self.process()
+        await self.send("2", "attempt:ai", True)
+        await self.process()
+        await self.send("2", "Трасса 6B, верхняя страховка, долез с зависанием")
+        self.assertEqual(await self.conn.scalar(select(Job.lane).order_by(Job.sequence.desc()).limit(1)), "ai")
+        await self.process("ai", Intent(kind="attempt", name="Трасса", grade="6B", reached_top=True,
+                                       clean_ascent=True, hangs=1, belay="top_rope"))
+        saved = (await self.conn.execute(select(RouteAttempt.reached_top, RouteAttempt.clean_ascent,
+                                               RouteAttempt.hangs, RouteAttempt.belay))).one()
+        self.assertTrue(saved.reached_top)
+        self.assertFalse(saved.clean_ascent)
+        self.assertEqual(saved.hangs, 1)
+        self.assertEqual(saved.belay, "top_rope")
+        await self.send("2", "stats:month", True)
+        self.assertEqual(await self.conn.scalar(select(Job.lane).order_by(Job.sequence.desc()).limit(1)), "fast")
+        await self.process()
+
     async def test_stale_ai_cannot_write_to_next_training(self):
         await self.login("2")
         await self.send("2", "training:start", True)

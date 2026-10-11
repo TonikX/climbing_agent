@@ -8,7 +8,7 @@ def button(text: str, data: str) -> dict:
 
 def menu(active: bool = False) -> list:
     return [[button("Завершить тренировку" if active else "Начать тренировку", "training:finish" if active else "training:start")],
-            [button("✍️ Записать попытку без AI", "attempt:form")],
+            [button("💬 Записать пролаз", "attempt:ai")],
             [button("📍 Место тренировки", "training:location")],
             [button("📋 Все попытки", "training:details:current"), button("📊 Статистика", "stats:menu")],
             [button("👤 Профиль", "profile"), button("🧪 Тестовый режим", "test:menu")]]

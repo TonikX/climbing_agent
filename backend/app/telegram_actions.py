@@ -194,7 +194,7 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
                     raw["continueCurrentRoute"] = True
                 if intent.hangs:
                     raw["cleanAscent"] = False
-                    raw["notes"] = (raw["notes"] or "") + f"; зависания: {intent.hangs}"
+                    raw["notes"] = (raw.get("notes") or "") + f"; зависания: {intent.hangs}"
                 dto = await execute_tool(session, "append_climbing_attempt", {**identity, "date": training.local_date.isoformat(), "attempt": raw}, job.id)
                 await reply(session, job, f"Сохранено: {intent.name} {intent.grade}\nЧисто: {dto['outcome']['cleanAscent']}\nСтиль: {intent.style}\nСтраховка: {intent.belay}", menu(True))
         else:

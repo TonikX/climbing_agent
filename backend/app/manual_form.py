@@ -13,6 +13,20 @@ from pydantic import ValidationError
 async def handle(session, user, job, reply) -> bool:
     command = job.payload["command"]
     dialog = await session.get(DialogState, user.id)
+    if command in ("attempt:ai", "/attempt"):
+        if dialog:
+            await session.delete(dialog)
+            await session.flush()
+        active = await _active(session, user.id)
+        if not active:
+            await reply(session, job, "Сначала начните тренировку.", menu(False))
+        else:
+            await reply(session, job,
+                "Опишите пролаз одним сообщением или отправьте голосовое. AI разберёт запись и сохранит её в текущей тренировке.\n"
+                "Например: «Подушка безопасности 6A, флеш, верхняя страховка, без срывов и зависаний».\n"
+                "Если название или категория неясны, бот попросит уточнить запись.",
+                [[button("✍️ Заполнить вручную", "attempt:form")], [button("← Журнал", "journal")]])
+        return True
     if command in ("profile:timezone", "profile:name", "gear:form"):
         if dialog:
             await session.delete(dialog)
