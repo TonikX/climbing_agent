@@ -57,7 +57,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-    networks: [backend]
+    networks: [backend, db-access]
 
   migrate:
     <<: *runtime
@@ -138,5 +138,6 @@ volumes:
   public_postgres:
 networks:
   backend: {internal: true}
+  db-access:
   egress:
   frontend:
