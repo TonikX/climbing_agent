@@ -1,11 +1,18 @@
 name: climbing-journal-public
 
+x-logging: &bounded-logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 x-runtime: &runtime
   image: climbing-journal-api:public
   build:
     context: ./backend
     network: host
   restart: unless-stopped
+  logging: *bounded-logs
   init: true
   entrypoint: []
   security_opt: [no-new-privileges:true]
@@ -45,6 +52,7 @@ x-worker-env: &worker-env
 services:
   postgres:
     image: postgres:17-alpine
+    logging: *bounded-logs
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-climbing_journal}
@@ -125,6 +133,7 @@ services:
 
   nginx:
     image: nginx:1.28-alpine
+    logging: *bounded-logs
     restart: unless-stopped
     ports: ["${NGINX_HTTP_PORT:-8080}:80", "${NGINX_HTTPS_PORT:-8443}:443"]
     volumes:
