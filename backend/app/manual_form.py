@@ -194,9 +194,13 @@ async def handle(session, user, job, reply) -> bool:
         if not data["reachedTop"]:
             data["cleanAscent"] = False
         payload = {k: v for k, v in data.items() if k != "training_id"}
-        await execute_tool(session, "append_climbing_attempt", {"user": {"id": user.id}, "date": active.local_date.isoformat(), "attempt": payload}, job.id)
+        result = await execute_tool(session, "append_climbing_attempt", {"user": {"id": user.id}, "date": active.local_date.isoformat(), "attempt": payload}, job.id)
         await session.delete(dialog)
-        await reply(session, job, "Попытка сохранена.", menu(True))
+        from app.attempt_management import card
+        from app.models import RouteAttempt
+        saved = await session.get(RouteAttempt, result["attemptId"])
+        await reply(session, job, "Сохранено.\n"+await card(session, saved),
+            [[button("✏️ Изменить", "am:pick:"+saved.id)], *menu(True)])
         return True
     dialog.data = data
     return True
