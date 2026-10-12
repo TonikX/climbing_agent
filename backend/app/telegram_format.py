@@ -24,7 +24,7 @@ def ascent_card(item, region=None, sector=None):
 def menu(active: bool = False) -> list:
     return [[button("Завершить тренировку" if active else "Начать тренировку", "training:finish" if active else "training:start")],
             [button("💬 Записать пролаз", "attempt:ai")],
-            [button("✏️ Изменить пролазы", "attempts:last:0"), button("🗑 Удалить пролазы", "attempts:current:0")],
+            [button("✏️ Тренировки и пролазы", "trainings:0")],
             [button("📍 Место тренировки", "training:location")],
             [button("📋 Все попытки", "training:details:current"), button("📊 Статистика", "stats:menu")],
             [button("👤 Профиль", "profile"), button("🧪 Тестовый режим", "test:menu")]]

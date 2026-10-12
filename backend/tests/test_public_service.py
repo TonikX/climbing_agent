@@ -151,7 +151,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         for name in ("Первая", "Вторая"):
             await self.send("2", f"{name} 6A")
             await self.process("ai", Intent(kind="attempt", name=name, grade="6A"))
-        initial = (await self.conn.execute(select(RouteAttempt.id, RouteAttempt.clean_ascent,
+        initial = (await self.conn.execute(select(RouteAttempt.id, RouteAttempt.training_id, RouteAttempt.clean_ascent,
             RouteAttempt.belay).order_by(RouteAttempt.sequence))).all()
         self.assertEqual([(x.clean_ascent, x.belay) for x in initial], [(False,"top_rope")]*2)
         await self.send("2", "training:finish", True)
@@ -183,6 +183,9 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         for name in ("Четвёртая", "Пятая"):
             await self.send("2", name+" 6A")
             await self.process("ai", Intent(kind="attempt",name=name,grade="6A"))
+        tid=await self.conn.scalar(select(RouteAttempt.training_id).where(RouteAttempt.route_snapshot["name"].astext=="Четвёртая"))
+        await self.send("2", "tr:"+tid, True)
+        await self.process()
         await self.send("2", "am:select", True)
         await self.process()
         await self.send("2", "am:all", True)
@@ -194,12 +197,60 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),4)
         await self.confirm_attempt_deletion()
         self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),2)
+        await self.send("2", "tr:"+initial[0].training_id, True)
+        await self.process()
         await self.send("2", "am:pick:"+initial[0].id, True)
         await self.process()
         await self.send("2", "am:askdelete", True)
         await self.process()
         await self.confirm_attempt_deletion()
-        self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),2)  # Completed history survives.
+        self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),1)  # Chosen completed attempt is deleted too.
+
+    async def test_training_choice_region_sector_and_llm_delete_completed_attempt(self):
+        from app.public_schemas import AttemptChanges
+        await self.login("2")
+        await self.login("3")
+        attempts=[]
+        for name in ("Старая трасса", "Новая трасса"):
+            await self.send("2","training:start",True)
+            await self.process()
+            await self.send("2",name+" 6A")
+            await self.process("ai",Intent(kind="attempt",name=name,grade="6A"))
+            row=(await self.conn.execute(select(RouteAttempt.id,RouteAttempt.training_id).where(
+                RouteAttempt.route_snapshot["name"].astext==name))).one()
+            attempts.append(row)
+            await self.send("2","training:finish",True)
+            await self.process()
+        await self.send("2","trainings:0",True)
+        await self.process()
+        await self.send("3","tr:"+attempts[0].training_id,True)
+        await self.process()
+        await self.send("2","tr:"+attempts[0].training_id,True)
+        await self.process()
+        await self.send("2","am:pick:"+attempts[0].id,True)
+        await self.process()
+        await self.send("2","Измени район на Крым и сектор на Красный камень")
+        await self.process("ai",Intent(kind="update_attempts",changes=AttemptChanges(region="Крым",sector="Красный камень")))
+        snapshot=await self.conn.scalar(select(RouteAttempt.route_snapshot).where(RouteAttempt.id==attempts[0].id))
+        from app.models import Location, Section
+        self.assertEqual(await self.conn.scalar(select(Location.name).where(Location.id==snapshot["areaId"])),"Крым")
+        self.assertEqual(await self.conn.scalar(select(Section.name).where(Section.id==snapshot["sectorId"])),"Красный камень")
+        other=await self.conn.scalar(select(RouteAttempt.route_snapshot).where(RouteAttempt.id==attempts[1].id))
+        self.assertIsNone(other["areaId"])
+        await self.send("2","am:pick:"+attempts[0].id,True)
+        await self.process()
+        editor=(await self.conn.scalar(select(DialogState.data).where(DialogState.state=="attempt_edit")))["editor_token"]
+        await self.send("2","am:field:"+editor+":sector",True)
+        await self.process()
+        await self.send("2","Новый сектор")
+        await self.process()
+        snapshot=await self.conn.scalar(select(RouteAttempt.route_snapshot).where(RouteAttempt.id==attempts[0].id))
+        self.assertEqual(await self.conn.scalar(select(Section.name).where(Section.id==snapshot["sectorId"])),"Новый сектор")
+        await self.send("2","Удали выбранный пролаз")
+        await self.process("ai",Intent(kind="delete_attempts"))
+        await self.confirm_attempt_deletion()
+        self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),1)
+        self.assertEqual(await self.conn.scalar(select(RouteAttempt.id)),attempts[1].id)
 
     async def test_edit_uses_saved_version_and_foreign_button_is_rejected(self):
         from app.public_schemas import AttemptChanges

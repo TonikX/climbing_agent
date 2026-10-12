@@ -63,6 +63,15 @@ async def ingest(session, raw: dict) -> dict:
     payload = {"command": command[:8000], "telegram_id": tid, "chat_id": cid, "username": actor.username,
                "mutation": not read_only}
     if lane == "ai":
+        if dialog and dialog.data.get("form") == "attempt_manage":
+            if dialog.created_at < now()-timedelta(minutes=5):
+                payload["selection_required"] = True
+            elif dialog.data.get("training_id"):
+                payload["selected_training"] = {"id":dialog.data["training_id"],"version":dialog.data["version"]}
+                if dialog.state in ("attempt_edit", "training_selected"):
+                    payload["selected_attempts"] = dialog.data.get("ids", [])
+            else:
+                payload["selection_required"] = True
         last = await session.scalar(select(TrainingSession).where(TrainingSession.user_id == user.id,
             TrainingSession.status == "completed").order_by(TrainingSession.local_date.desc(),
                 TrainingSession.created_at.desc(), TrainingSession.id.desc()).limit(1))

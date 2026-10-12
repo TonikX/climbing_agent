@@ -773,8 +773,9 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
         grouped_rows: dict[str | None, list[RouteAttempt]] = {}
         training_by_location: dict[str | None, set[str]] = {}
         for training, attempt in rows:
-            grouped_rows.setdefault(training.primary_location_id, []).append(attempt)
-            training_by_location.setdefault(training.primary_location_id, set()).add(training.id)
+            location_id=(attempt.route_snapshot or {}).get("areaId",training.primary_location_id)
+            grouped_rows.setdefault(location_id, []).append(attempt)
+            training_by_location.setdefault(location_id, set()).add(training.id)
         locations = {location.id: location for location in (await session.scalars(
             select(Location).where(Location.id.in_([key for key in grouped_rows if key])))).all()}
         result["locations"] = [

@@ -14,6 +14,8 @@ class Claim(Strict):
 
 
 class AttemptChanges(Strict):
+    region: str | None = Field(default=None, min_length=1, max_length=200)
+    sector: str | None = Field(default=None, min_length=1, max_length=200)
     name: str | None = Field(default=None, min_length=1, max_length=200)
     grade: str | None = Field(default=None, min_length=1, max_length=30)
     reached_top: bool | None = None
@@ -28,7 +30,7 @@ class AttemptChanges(Strict):
 
 class Intent(Strict):
     kind: Literal["statistics", "attempt", "update_attempts", "delete_attempts", "clarify"]
-    training_scope: Literal["current", "last"] = "last"
+    training_scope: Literal["selected", "current", "last"] = "selected"
     target_numbers: list[int] = Field(default_factory=list, max_length=100)
     target_name: str | None = Field(default=None, max_length=200)
     target_all: bool = False
