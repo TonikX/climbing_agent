@@ -19,6 +19,7 @@ from app.jobs import now
 from app.profile_service import ProfileService
 from app.application_services import StatisticsService, TrainingService
 from app.manual_form import handle as handle_manual_form
+from app.attempt_management import handle as handle_attempt_management, apply_intent, card
 
 
 async def reply(session, job: Job, value: str, keyboard=None, suffix="", document=None, access_request_id=None):
@@ -60,6 +61,8 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
         await reply(session, job, value, keyboard)
     elif user.status != "active":
         await reply(session, job, "Нужен доступ владельца. Подайте заявку через /start.", [[button("Запросить доступ", "access:request")]])
+    elif await handle_attempt_management(session, user, job, reply):
+        pass
     elif await handle_manual_form(session, user, job, reply):
         pass
     elif command in ("/journal", "journal"):
@@ -84,7 +87,8 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
         else:
             dto = (await StatisticsService.read(session, {**identity, "scope": "last_training", "detail": "full"})).get("training") or {}
         for i, chunk in enumerate(attempts(dto)):
-            await reply(session, job, chunk, [[button("← Статистика", "stats:menu")]], f":{i}")
+            await reply(session, job, chunk, [[button("✏️ Изменить попытку", "attempts:current:0" if command.endswith("current") else "attempts:last:0")],
+                         [button("← Статистика", "stats:menu")]], f":{i}")
     elif command in ("training:start", "/training"):
         if await _active(session, user.id):
             await reply(session, job, "Тренировка уже начата.", menu(True))
@@ -176,6 +180,8 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
                        "dateTo": intent.date_to.isoformat() if intent.date_to else None}
             dto = await TrainingService.current(session, identity) if intent.scope == "current" else await StatisticsService.read(session, filters)
             await reply(session, job, statistics(dto), [[button("← Статистика", "stats:menu")]])
+        elif intent.kind in ("update_attempts", "delete_attempts"):
+            await apply_intent(session, user, job, intent, reply)
         elif intent.kind == "attempt":
             training = await _active(session, user.id)
             if not training or training.id != job.training_id:
@@ -194,9 +200,11 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
                     raw["continueCurrentRoute"] = True
                 if intent.hangs:
                     raw["cleanAscent"] = False
-                    raw["notes"] = (raw.get("notes") or "") + f"; зависания: {intent.hangs}"
                 dto = await execute_tool(session, "append_climbing_attempt", {**identity, "date": training.local_date.isoformat(), "attempt": raw}, job.id)
-                await reply(session, job, f"Сохранено: {intent.name} {intent.grade}\nЧисто: {dto['outcome']['cleanAscent']}\nСтиль: {intent.style}\nСтраховка: {intent.belay}", menu(True))
+                from app.models import RouteAttempt
+                saved = await session.get(RouteAttempt, dto["attemptId"])
+                await reply(session, job, "Сохранено.\n"+await card(session, saved),
+                    [[button("✏️ Изменить", "am:pick:"+saved.id)], *menu(True)])
         else:
             await reply(session, job, intent.question or "Уточните трассу, категорию и результат попытки.")
         if job.reservation_day:

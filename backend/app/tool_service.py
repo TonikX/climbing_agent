@@ -277,7 +277,7 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
         training_id=training.id, route_id=route.id if route else None, sequence=sequence,
         route_session_key=route_session_key, attempt_number=attempt_number,
         attempts=int(raw.get("attempts") or 1), **facts,
-        style=style, belay=str(raw.get("belay") or "unknown"),
+        style=style, belay=str(raw.get("belay") if raw.get("belay") not in (None, "unknown") else "top_rope"),
         feel=str(raw.get("feel") or "unknown"), notes=raw.get("notes"),
         high_point=raw.get("highPoint"), total_moves=raw.get("totalMoves"), falls=falls, hangs=raw.get("hangs"),
         is_test=is_test,
@@ -294,7 +294,7 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
 
 
 def _attempt_dict(item: RouteAttempt, route: Route | None = None, section: Section | None = None) -> dict[str, Any]:
-    return {"id": item.id, "number": item.attempt_number, "routeId": item.route_id,
+    return {"id": item.id, "number": item.attempt_number, "sequence": item.sequence, "routeId": item.route_id,
             "routeSessionKey": item.route_session_key, "routeSnapshot": item.route_snapshot, "belay": item.belay,
             "attempts": item.attempts, "reachedTop": item.reached_top, "cleanAscent": item.clean_ascent, "style": item.style, "feel": item.feel,
             "highPoint": item.high_point, "totalMoves": item.total_moves, "falls": item.falls, "hangs": item.hangs,
@@ -562,6 +562,8 @@ def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
         "flashCount": styles["flash"],
         "redpointCount": styles["redpoint"],
         "unknownStyleCount": styles["unknown"],
+        "withFallsAttemptsCount": sum(a.attempts for a in attempts if a.style == "with_falls"),
+        "withHangsAttemptsCount": sum(a.attempts for a in attempts if a.style == "with_hangs"),
         "leadAttemptsCount": sum(a.attempts for a in attempts if a.belay == "lead"),
         "topRopeAttemptsCount": sum(a.attempts for a in attempts if a.belay == "top_rope"),
         "autoBelayAttemptsCount": sum(a.attempts for a in attempts if a.belay == "auto_belay"),

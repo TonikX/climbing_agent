@@ -63,6 +63,8 @@ async def handle(session, user, job, reply) -> bool:
         session.add(DialogState(user_id=user.id, state="name", data={"training_id": active.id}))
         await reply(session, job, "Введите название трассы. /cancel — отменить форму.")
         return True
+    if dialog and dialog.data.get("form") == "attempt_manage":
+        return False
     if not dialog:
         return False
     if command == "/cancel" or dialog.created_at < now()-timedelta(minutes=30):
@@ -165,10 +167,11 @@ async def handle(session, user, job, reply) -> bool:
             return True
         data["reachedTop"], dialog.state = command == "form:yes", "style"
         await reply(session, job, "Стиль попытки?", [[button("Onsight", "form:onsight"), button("Flash", "form:flash")],
-                       [button("Red Point", "form:redpoint"), button("Не указан", "form:unknown")]])
+                       [button("Red Point", "form:redpoint"), button("Не указан", "form:unknown")],
+                       [button("Со срывом", "form:with_falls"), button("С зависанием", "form:with_hangs")]])
     elif dialog.state == "style":
         value = command.removeprefix("form:")
-        if value not in ("onsight", "flash", "redpoint", "unknown"):
+        if value not in ("onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"):
             return True
         data["style"], dialog.state = value, "clean"
         await reply(session, job, "Пролезли чисто, без срывов и зависаний?", [[button("Да", "form:yes"), button("Нет", "form:no")]])

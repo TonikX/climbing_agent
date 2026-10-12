@@ -6,9 +6,25 @@ def button(text: str, data: str) -> dict:
     return {"text": text, "callback_data": data}
 
 
+STYLE_NAMES = {"onsight": "Onsight", "flash": "Flash", "redpoint": "Red Point",
+               "with_falls": "Со срывом", "with_hangs": "С зависанием", "unknown": "Не указан"}
+BELAY_NAMES = {"lead": "Нижняя", "top_rope": "Верхняя", "auto_belay": "Автостраховка",
+               "bouldering": "Боулдеринг", "unknown": "Не указана"}
+
+
+def ascent_card(item, region=None, sector=None):
+    snapshot = item.route_snapshot or {}
+    return (f"Регион: {region or 'Не указан'}\nСектор: {sector or 'Не указан'}\n"
+            f"Название трассы: {snapshot.get('name') or 'Не указано'}\nКатегория: {snapshot.get('grade') or 'Не указана'}\n"
+            f"Чисто: {'Да' if item.clean_ascent is True else 'Нет'}\n"
+            f"Стиль: {STYLE_NAMES.get(item.style, item.style)}\n"
+            f"Страховка: {BELAY_NAMES.get(item.belay, item.belay)}")
+
+
 def menu(active: bool = False) -> list:
     return [[button("Завершить тренировку" if active else "Начать тренировку", "training:finish" if active else "training:start")],
             [button("💬 Записать пролаз", "attempt:ai")],
+            [button("✏️ Изменить пролазы", "attempts:last:0"), button("🗑 Удалить пролазы", "attempts:current:0")],
             [button("📍 Место тренировки", "training:location")],
             [button("📋 Все попытки", "training:details:current"), button("📊 Статистика", "stats:menu")],
             [button("👤 Профиль", "profile"), button("🧪 Тестовый режим", "test:menu")]]
@@ -32,6 +48,8 @@ def summary(dto: dict) -> str:
              f"👁 {value.get('onsightCount', 0)} Onsight", f"⚡ {value.get('flashCount', 0)} Flash",
              f"🎯 {value.get('redpointCount', 0)} Red Point",
              f"❔ {value.get('unknownStyleCount', 0)} — стиль не указан",
+             f"Со срывом: {value.get('withFallsAttemptsCount', 0)} попыток",
+             f"С зависанием: {value.get('withHangsAttemptsCount', 0)} попыток",
              f"🔄 {value.get('activeProjects', 0)} проекта"]
     for key, label in (("maxAttemptedGrade", "пробовал"), ("maxReachedTopGrade", "дошёл до конца"), ("maxCompletedGrade", "чисто")):
         if value.get(key):
@@ -85,10 +103,10 @@ def attempts(dto: dict) -> list[str]:
         title = f"{metadata.get('name', 'Трасса')} {metadata.get('grade') or ''}".strip()
         for attempt in records:
             yn = lambda v: "да" if v is True else "нет" if v is False else "не уточнено"
-            lines.append(f"{title}" + (" · 🧪 тест" if attempt.get("isTest") else "") + f"\n• Дошёл до конца: {yn(attempt.get('reachedTop'))}\n"
+            lines.append(f"№{attempt.get('sequence', attempt.get('number', '?'))} · {title}" + (" · 🧪 тест" if attempt.get("isTest") else "") + f"\n• Дошёл до конца: {yn(attempt.get('reachedTop'))}\n"
                          f"• Пролез чисто: {yn(attempt.get('cleanAscent'))}\n"
-                         f"• Стиль: {attempt.get('style', 'unknown')}\n"
-                         f"• Страховка: {attempt.get('belay', 'unknown')}\n"
+                         f"• Стиль: {STYLE_NAMES.get(attempt.get('style', 'unknown'), 'Не указан')}\n"
+                         f"• Страховка: {BELAY_NAMES.get(attempt.get('belay', 'unknown'), 'Не указана')}\n"
                          f"• Срывы: {attempt.get('falls') if attempt.get('falls') is not None else 'не уточнено'}" +
                          f"\n• Зависания: {attempt.get('hangs') if attempt.get('hangs') is not None else 'не уточнено'}" +
                          (f"\n• Комментарий: {attempt['notes']}" if attempt.get("notes") else ""))

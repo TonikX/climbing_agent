@@ -356,18 +356,11 @@ async def patch_attempt(attempt_id: str, command: AttemptPatch, session: Session
                                                           TrainingSession.user_id == uid))
         if not item:
             raise HTTPException(404, "Attempt not found")
-        await versioned_training(session, uid, item.training_id, command.expected_version)
-        raw = command.model_dump(exclude_unset=True, exclude={"expected_version"})
-        for snake, camel in (("reached_top", "reachedTop"), ("clean_ascent", "cleanAscent"), ("is_test", "isTest")):
-            if snake in raw:
-                raw[camel] = raw.pop(snake)
-        if raw.get("hangs"):
-            raw["cleanAscent"] = False
-            raw["notes"] = (raw.get("notes") or item.notes or "") + "; зависание"
-        for required in ("style", "belay", "isTest"):
-            if required in raw and raw[required] is None:
-                raise HTTPException(422, f"{required} cannot be null")
-        return await execute_tool(session, "update_climbing_attempt", user_payload({"attemptId": attempt_id, **raw}, uid))
+        from app.attempt_management import patch_rows
+        from app.public_schemas import AttemptChanges
+        changed, version = await patch_rows(session, uid, item.training_id, command.expected_version, [attempt_id],
+            AttemptChanges.model_validate(command.model_dump(exclude_unset=True, exclude={"expected_version"})))
+        return {"success": True, "attemptId": attempt_id, "version": version}
     return await run_mutation(session, uid, f"rest:patch-attempt:{attempt_id}", key,
                               command.model_dump(mode="json", exclude_unset=True), action)
 

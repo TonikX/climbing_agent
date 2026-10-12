@@ -15,12 +15,22 @@ def has_nonclean_evidence(raw: dict, current=None) -> bool:
         r"\b(?:срыв|завис)\w*(?:\s+и\s+(?:срыв|завис)\w*)?\s+не\s+было\b|"
         r"\bне\s+было\s+(?:срыв|завис)\w*(?:\s+и\s+(?:срыв|завис)\w*)?|"
         r"\bне\s+(?:сорв|завис|повис)\w*", "", normalized)
-    return bool((falls is not None and falls > 0) or (hangs is not None and hangs > 0) or re.search(
+    style = raw.get("style", getattr(current, "style", None))
+    style_evidence = (style == "with_falls" and ("style" in raw or raw.get("falls") != 0)) or (
+        style == "with_hangs" and ("style" in raw or raw.get("hangs") != 0))
+    return bool(style_evidence or
+        (falls is not None and falls > 0) or (hangs is not None and hangs > 0) or re.search(
         r"срыв|сорв|завис|повис|с\s+перерыв", normalized))
 
 
 def normalized_style(raw: dict, current=None) -> str:
     style = str(raw.get("style", getattr(current, "style", "unknown")) or "unknown")
+    if raw.get("falls", getattr(current, "falls", 0)):
+        return "with_falls"
+    if raw.get("hangs", getattr(current, "hangs", 0)):
+        return "with_hangs"
+    if style in ("with_falls", "with_hangs") and outcome(raw, current)["clean_ascent"] is True:
+        return "unknown"
     return "unknown" if style in ("onsight", "flash", "redpoint") and outcome(raw, current)["clean_ascent"] is not True else style
 
 
@@ -57,6 +67,8 @@ def outcome(raw: dict, current=None) -> dict:
         clean = False
     if clean is True:
         top = True
+    if current is None and clean is None:
+        clean = False
     # Retain the historical value on edits for audit; readers use the two facts.
     legacy = raw.get("result") or getattr(current, "result", None)
     if legacy is None:

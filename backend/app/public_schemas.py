@@ -13,8 +13,27 @@ class Claim(Strict):
     lane: Literal["fast", "ai", "delivery"]
 
 
+class AttemptChanges(Strict):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    grade: str | None = Field(default=None, min_length=1, max_length=30)
+    reached_top: bool | None = None
+    clean_ascent: bool | None = None
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] | None = None
+    belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] | None = None
+    falls: int | None = Field(default=None, ge=0, le=1000)
+    hangs: int | None = Field(default=None, ge=0, le=1000)
+    notes: str | None = Field(default=None, max_length=1000)
+    is_test: bool | None = None
+
+
 class Intent(Strict):
-    kind: Literal["statistics", "attempt", "clarify"]
+    kind: Literal["statistics", "attempt", "update_attempts", "delete_attempts", "clarify"]
+    training_scope: Literal["current", "last"] = "last"
+    target_numbers: list[int] = Field(default_factory=list, max_length=100)
+    target_name: str | None = Field(default=None, max_length=200)
+    target_all: bool = False
+    target_last: bool = False
+    changes: AttemptChanges | None = None
     scope: Literal["week", "month", "last_training", "current", "progress", "grades", "locations", "projects", "records"] = "week"
     date_from: date | None = None
     date_to: date | None = None
@@ -24,7 +43,7 @@ class Intent(Strict):
     clean_ascent: bool | None = None
     falls: int | None = Field(default=None, ge=0, le=1000)
     hangs: int | None = Field(default=None, ge=0, le=1000)
-    style: Literal["onsight", "flash", "redpoint", "unknown"] = "unknown"
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] = "unknown"
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] = "unknown"
     attempts: int = Field(default=1, ge=1, le=100)
     notes: str | None = Field(default=None, max_length=1000)
@@ -50,13 +69,13 @@ class TestMode(Strict):
     enabled: bool
 
 
-class AttemptPatch(Strict):
+class AttemptPatch(AttemptChanges):
     expected_version: int = Field(ge=1)
     reached_top: bool | None = None
     clean_ascent: bool | None = None
     falls: int | None = Field(default=None, ge=0)
     hangs: int | None = Field(default=None, ge=0)
-    style: Literal["onsight", "flash", "redpoint", "unknown"] | None = None
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] | None = None
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] | None = None
     notes: str | None = Field(default=None, max_length=1000)
     is_test: bool | None = None
@@ -130,7 +149,7 @@ class SummaryAttempt(Strict):
     clean_ascent: bool | None = None
     falls: int | None = Field(default=None, ge=0)
     hangs: int | None = Field(default=None, ge=0)
-    style: Literal["onsight", "flash", "redpoint", "unknown"] = "unknown"
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] = "unknown"
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] = "unknown"
     notes: str | None = Field(default=None, max_length=1000)
     is_test: bool = False

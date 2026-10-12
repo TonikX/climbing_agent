@@ -8,7 +8,7 @@ from app.tool_service import _summary
 
 class OutcomeTest(unittest.TestCase):
     def test_independent_facts_and_legacy_uncertainty(self):
-        self.assertEqual(outcome({"reachedTop": True})["clean_ascent"], None)
+        self.assertEqual(outcome({"reachedTop": True})["clean_ascent"], False)
         self.assertEqual(outcome({"cleanAscent": True})["reached_top"], True)
         self.assertEqual(outcome({"reachedTop": False})["clean_ascent"], False)
         self.assertEqual(outcome({"reachedTop": True, "falls": 2})["clean_ascent"], False)

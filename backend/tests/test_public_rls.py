@@ -35,7 +35,9 @@ class RowSecurityTest(unittest.IsolatedAsyncioTestCase):
                         with Operations.context(MigrationContext.configure(sync)):
                             module.upgrade()
                     await conn.run_sync(apply)
-                for path in files[:-1]:
+                initial = [path for path in files if path.stem < "20261010_0012"]
+                public_migrations = [path for path in files if path.stem >= "20261010_0012"]
+                for path in initial:
                     await migrate(path)
                 await conn.execute(text("INSERT INTO users(id,name,timezone) VALUES ('a','A','Europe/Moscow'),('b','B','Europe/Moscow')"))
                 await conn.execute(text("INSERT INTO locations(id,type,name) VALUES ('loc','outdoor','Private A')"))
@@ -47,7 +49,8 @@ class RowSecurityTest(unittest.IsolatedAsyncioTestCase):
                            ('ab','tb',1,1,'unknown','unknown','unknown','unknown','{"name":"B"}')"""))
                 before = list((await conn.execute(text("SELECT id,route_snapshot FROM route_attempts ORDER BY id"))).all())
                 with patch.dict("os.environ", {"PUBLIC_MIGRATION_MANIFEST": json.dumps({"approved_user_ids": ["a"], "location_owners": {"loc": "a"}})}):
-                    await migrate(files[-1])
+                    for path in public_migrations:
+                        await migrate(path)
                 self.assertEqual(before, list((await conn.execute(text("SELECT id,route_snapshot FROM route_attempts ORDER BY id"))).all()))
                 self.assertEqual(await conn.scalar(text("SELECT status FROM users WHERE id='b'")), "pending_approval")
                 await conn.execute(text(f'CREATE ROLE "{role}" NOLOGIN NOSUPERUSER NOBYPASSRLS'))

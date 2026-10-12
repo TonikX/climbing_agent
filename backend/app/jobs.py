@@ -45,7 +45,8 @@ async def ingest(session, raw: dict) -> dict:
     command = command.split("@", 1)[0] if command.startswith("/") else command
     voice = msg.voice if not envelope.callback_query else None
     lane = "fast" if envelope.callback_query or command.startswith("/") or user.status != "active" else "ai"
-    if await session.get(DialogState, user.id):
+    dialog = await session.get(DialogState, user.id)
+    if dialog and (dialog.data.get("form") != "attempt_manage" or dialog.state == "attempt_value"):
         lane = "fast"
     if not command and not voice:
         lane, command = "fast", "unsupported"
@@ -61,6 +62,12 @@ async def ingest(session, raw: dict) -> dict:
     active = await session.scalar(select(TrainingSession).where(TrainingSession.user_id == user.id, TrainingSession.status == "active"))
     payload = {"command": command[:8000], "telegram_id": tid, "chat_id": cid, "username": actor.username,
                "mutation": not read_only}
+    if lane == "ai":
+        last = await session.scalar(select(TrainingSession).where(TrainingSession.user_id == user.id,
+            TrainingSession.status == "completed").order_by(TrainingSession.local_date.desc(),
+                TrainingSession.created_at.desc(), TrainingSession.id.desc()).limit(1))
+        if last:
+            payload["last_training"] = {"id": last.id, "version": last.version}
     if command == "quota:queued":
         payload["mutation"] = False
     if envelope.callback_query:

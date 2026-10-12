@@ -5,7 +5,7 @@ from unittest.mock import patch
 from sqlalchemy import func, select, update
 
 from app.config import get_settings
-from app.models import RouteAttempt, User
+from app.models import RouteAttempt, TrainingSession, User
 from app.public_models import AccessRequest, Job, Outbox, TelegramUpdate
 from app.public_schemas import Intent
 import test_auth_postgres as auth_tests
@@ -137,6 +137,84 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.conn.scalar(select(Job.lane).order_by(Job.sequence.desc()).limit(1)), "fast")
         await self.process()
 
+    async def test_defaults_bulk_edit_button_edit_and_confirmed_deletion(self):
+        from app.public_schemas import AttemptChanges
+        await self.login("2")
+        await self.send("2", "training:start", True)
+        await self.process()
+        for name in ("Первая", "Вторая"):
+            await self.send("2", f"{name} 6A")
+            await self.process("ai", Intent(kind="attempt", name=name, grade="6A"))
+        initial = (await self.conn.execute(select(RouteAttempt.id, RouteAttempt.clean_ascent,
+            RouteAttempt.belay).order_by(RouteAttempt.sequence))).all()
+        self.assertEqual([(x.clean_ascent, x.belay) for x in initial], [(False,"top_rope")]*2)
+        await self.send("2", "training:finish", True)
+        await self.process()
+        await self.send("2", "В последней тренировке все пролазы с зависанием, нижняя страховка")
+        await self.process("ai", Intent(kind="update_attempts", target_all=True,
+            changes=AttemptChanges(style="with_hangs", belay="lead")))
+        values=(await self.conn.execute(select(RouteAttempt.clean_ascent,RouteAttempt.style,RouteAttempt.belay))).all()
+        self.assertEqual([(x.clean_ascent,x.style,x.belay) for x in values],[(False,"with_hangs","lead")]*2)
+        await self.send("2", "am:pick:"+initial[0].id, True)
+        await self.process()
+        await self.send("2", "am:field:grade", True)
+        await self.process()
+        await self.send("2", "6B+")
+        await self.process()
+        self.assertEqual((await self.conn.scalar(select(RouteAttempt.route_snapshot).where(RouteAttempt.id==initial[0].id)))["grade"],"6B+")
+        await self.send("2", "training:start", True)
+        await self.process()
+        await self.send("2", "Третья 6B со срывом")
+        await self.process("ai", Intent(kind="attempt",name="Третья",grade="6B",falls=1))
+        current_id=await self.conn.scalar(select(RouteAttempt.id).where(RouteAttempt.route_snapshot["name"].astext=="Третья"))
+        await self.send("2", "Удали пролаз Третья текущей тренировки")
+        await self.process("ai", Intent(kind="delete_attempts",training_scope="current",target_name="Третья"))
+        self.assertIsNotNone(await self.conn.scalar(select(RouteAttempt.id).where(RouteAttempt.id==current_id)))
+        await self.send("2", "am:delete", True)
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),2)
+        for name in ("Четвёртая", "Пятая"):
+            await self.send("2", name+" 6A")
+            await self.process("ai", Intent(kind="attempt",name=name,grade="6A"))
+        await self.send("2", "am:select", True)
+        await self.process()
+        await self.send("2", "am:all", True)
+        await self.process()
+        await self.send("2", "am:askdelete", True)
+        await self.process()
+        await self.send("2", "am:delete", True)
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),2)
+        await self.send("2", "am:pick:"+initial[0].id, True)
+        await self.process()
+        await self.send("2", "am:askdelete", True)
+        await self.process()
+        await self.send("2", "am:delete", True)
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),2)  # Completed history survives.
+
+    async def test_edit_uses_saved_version_and_foreign_button_is_rejected(self):
+        from app.public_schemas import AttemptChanges
+        a=await self.login("2")
+        await self.login("3")
+        await self.send("2","training:start",True)
+        await self.process()
+        await self.send("2","Трасса 6A")
+        await self.process("ai",Intent(kind="attempt",name="Трасса",grade="6A"))
+        aid=await self.conn.scalar(select(RouteAttempt.id))
+        await self.send("3","am:pick:"+aid,True)
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),1)
+        await self.send("2","training:finish",True)
+        await self.process()
+        await self.send("2","Измени все пролазы последней тренировки на 6B")
+        training=(await self.conn.execute(select(TrainingSession.id,TrainingSession.version))).one()
+        response=await self.client.patch("/api/v1/attempts/"+aid,headers=a,
+            json={"expected_version":training.version,"grade":"6C"})
+        self.assertEqual(response.status_code,200,response.text)
+        await self.process("ai",Intent(kind="update_attempts",target_all=True,changes=AttemptChanges(grade="6B")))
+        self.assertEqual((await self.conn.scalar(select(RouteAttempt.route_snapshot)))["grade"],"6C")
+
     async def test_stale_ai_cannot_write_to_next_training(self):
         await self.login("2")
         await self.send("2", "training:start", True)
@@ -165,7 +243,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         rows = (await self.conn.execute(select(RouteAttempt))).all()
         self.assertEqual(len(rows), 1)
         self.assertFalse(rows[0].clean_ascent)
-        self.assertEqual(rows[0].style, "unknown")
+        self.assertEqual(rows[0].style, "with_falls")
         retry = await self.client.post(f"/api/v1/internal/jobs/ai/{item['id']}/complete", headers={"X-API-Key": "test-auth-key"},
              json={"worker_id": "worker", "intent": Intent(kind="attempt", name="Трасса", grade="6B").model_dump(mode="json")})
         self.assertEqual(retry.status_code, 409)
