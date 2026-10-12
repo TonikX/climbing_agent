@@ -7,6 +7,7 @@ from sqlalchemy import func, select, update
 from app.config import get_settings
 from app.models import RouteAttempt, TrainingSession, User
 from app.public_models import AccessRequest, Job, Outbox, TelegramUpdate
+from app.public_models import DialogState
 from app.public_schemas import Intent
 import test_auth_postgres as auth_tests
 
@@ -79,6 +80,11 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         complete = await self.client.post(f"/api/v1/internal/jobs/{lane}/{item['id']}/complete", json=payload, headers=headers)
         self.assertEqual(complete.status_code, 200, complete.text)
         return item
+
+    async def confirm_attempt_deletion(self):
+        data=await self.conn.scalar(select(DialogState.data).where(DialogState.state=="attempt_delete"))
+        await self.send("2", "am:delete:"+data["confirmation"], True)
+        await self.process()
 
     async def test_pending_account_cannot_read_or_spend_and_owner_decides_once(self):
         await self.login("1")
@@ -157,7 +163,8 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([(x.clean_ascent,x.style,x.belay) for x in values],[(False,"with_hangs","lead")]*2)
         await self.send("2", "am:pick:"+initial[0].id, True)
         await self.process()
-        await self.send("2", "am:field:grade", True)
+        editor=(await self.conn.scalar(select(DialogState.data).where(DialogState.state=="attempt_edit")))["editor_token"]
+        await self.send("2", "am:field:"+editor+":grade", True)
         await self.process()
         await self.send("2", "6B+")
         await self.process()
@@ -170,8 +177,8 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.send("2", "Удали пролаз Третья текущей тренировки")
         await self.process("ai", Intent(kind="delete_attempts",training_scope="current",target_name="Третья"))
         self.assertIsNotNone(await self.conn.scalar(select(RouteAttempt.id).where(RouteAttempt.id==current_id)))
-        await self.send("2", "am:delete", True)
-        await self.process()
+        old_confirmation=(await self.conn.scalar(select(DialogState.data).where(DialogState.state=="attempt_delete")))["confirmation"]
+        await self.confirm_attempt_deletion()
         self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),2)
         for name in ("Четвёртая", "Пятая"):
             await self.send("2", name+" 6A")
@@ -182,15 +189,16 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.process()
         await self.send("2", "am:askdelete", True)
         await self.process()
-        await self.send("2", "am:delete", True)
+        await self.send("2", "am:delete:"+old_confirmation, True)
         await self.process()
+        self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),4)
+        await self.confirm_attempt_deletion()
         self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),2)
         await self.send("2", "am:pick:"+initial[0].id, True)
         await self.process()
         await self.send("2", "am:askdelete", True)
         await self.process()
-        await self.send("2", "am:delete", True)
-        await self.process()
+        await self.confirm_attempt_deletion()
         self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),2)  # Completed history survives.
 
     async def test_edit_uses_saved_version_and_foreign_button_is_rejected(self):

@@ -1,5 +1,6 @@
 """Owned, versioned attempt mutations shared by Telegram and the public API."""
 import hashlib
+import secrets
 from datetime import timedelta
 
 from fastapi import HTTPException
@@ -110,11 +111,12 @@ async def confirm_delete(session, uid, job, training, selected, reply):
     if not selected:
         await reply(session, job, "Сначала выберите попытки для удаления.")
         return
+    confirmation = secrets.token_hex(8)
     await dialog_set(session, uid, "attempt_delete", {"form": "attempt_manage", "training_id": training.id,
-        "version": training.version, "ids": [x.id for x in selected]})
+        "version": training.version, "ids": [x.id for x in selected], "confirmation": confirmation})
     preview = "\n".join(f"№{x.sequence} · {(x.route_snapshot or {}).get('name')} {(x.route_snapshot or {}).get('grade')}" for x in selected[:20])
     await reply(session, job, f"Удалить {len(selected)} попыток текущей тренировки?\n{preview}",
-        [[button("🗑 Подтверждаю удаление", "am:delete")], [button("Отмена", "am:cancel")]])
+        [[button("🗑 Подтверждаю удаление", "am:delete:"+confirmation)], [button("Отмена", "am:cancel")]])
 
 
 async def apply_intent(session, user, job, intent, reply):
@@ -179,9 +181,10 @@ async def handle(session, user, job, reply):
             RouteAttempt.id == command.removeprefix("am:pick:"), TrainingSession.user_id==user.id))
         if not item: raise HTTPException(404,"Attempt not found")
         training = await session.get(TrainingSession,item.training_id)
+        editor_token = secrets.token_hex(8)
         await dialog_set(session,user.id,"attempt_edit",{"form":"attempt_manage","training_id":training.id,
-            "version":training.version,"ids":[item.id]})
-        keyboard = [[button(label,"am:field:"+field)] for field,label in (
+            "version":training.version,"ids":[item.id],"editor_token":editor_token})
+        keyboard = [[button(label,"am:field:"+editor_token+":"+field)] for field,label in (
             ("name","Название"),("grade","Категория"),("clean_ascent","Чистота"),("reached_top","Дошёл до конца"),
             ("style","Стиль"),("belay","Страховка"),("falls","Срывы"),("hangs","Зависания"),("notes","Комментарий"))]
         if training.status=="active": keyboard.append([button("🗑 Удалить попытку","am:askdelete")])
@@ -228,20 +231,32 @@ async def handle(session, user, job, reply):
         training=await locked_training(session,user.id,data["training_id"],data["version"])
         selected=[x for x in await rows(session,user.id,training.id) if x.id in data["ids"]]
         await confirm_delete(session,user.id,job,training,selected,reply)
-    elif command=="am:delete" and dialog.state=="attempt_delete":
+    elif command.startswith("am:delete") and dialog.state=="attempt_delete":
+        if command != "am:delete:"+data.get("confirmation", ""):
+            await reply(session,job,"Подтверждение устарело. Используйте кнопку под актуальным списком попыток.")
+            return True
         count,_=await delete_rows(session,user.id,data["training_id"],data["version"],data["ids"])
         await session.delete(dialog)
         await reply(session,job,f"Удалено попыток: {count}",menu(True))
     elif command.startswith("am:field:") and dialog.state=="attempt_edit":
-        field=command.removeprefix("am:field:")
+        token, _, field = command.removeprefix("am:field:").partition(":")
+        if token != data.get("editor_token"):
+            await reply(session,job,"Карточка устарела. Выберите попытку заново.")
+            return True
         if field not in AttemptChanges.model_fields: raise HTTPException(422,"Unknown field")
-        dialog.state,dialog.data="attempt_value",{**data,"field":field}
+        value_token=secrets.token_hex(8)
+        dialog.state,dialog.data="attempt_value",{**data,"field":field,"value_token":value_token}
         options=STYLE_NAMES if field=="style" else BELAY_NAMES if field=="belay" else {"yes":"Да","no":"Нет"} if field in ("clean_ascent","reached_top","is_test") else None
         await reply(session,job,"Выберите новое значение." if options else "Введите новое значение. /cancel — отмена.",
-            [[button(label,"am:value:"+value)] for value,label in options.items()] if options else None)
+            [[button(label,"am:value:"+value_token+":"+value)] for value,label in options.items()] if options else None)
     elif dialog.state=="attempt_value":
         field=data["field"]
-        value=command.removeprefix("am:value:")
+        value=command
+        if command.startswith("am:value:"):
+            token, _, value=command.removeprefix("am:value:").partition(":")
+            if token != data.get("value_token"):
+                await reply(session,job,"Кнопка устарела. Используйте актуальную карточку.")
+                return True
         if field in ("falls","hangs"):
             if not value.isdigit():
                 await reply(session,job,"Введите число от 0 до 1000.")
