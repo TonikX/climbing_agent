@@ -32,6 +32,25 @@ test_user.__test__ = False
 
 
 class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
+    async def test_append_after_editing_one_attempt_location_uses_training_area(self):
+        from app.attempt_management import patch_rows
+        from app.public_schemas import AttemptChanges
+        from app.models import TrainingSession
+        await self.conn.run_sync(Base.metadata.create_all)
+        async with AsyncSession(bind=self.conn,expire_on_commit=False) as session:
+            user=await test_user(session,"Location edit")
+            training=await _start(session,{"user":user,"date":"2026-10-12","area":{"name":"Old area"},"sector":{"name":"Old sector"}})
+            first=await _append(session,{"user":user,"date":"2026-10-12","name":"A","grade":"6A"})
+            await _append(session,{"user":user,"date":"2026-10-12","name":"B","grade":"6A"})
+            current=await session.get(TrainingSession,training["trainingId"])
+            old_area=current.primary_location_id
+            await patch_rows(session,current.user_id,current.id,current.version,[first["attemptId"]],
+                             AttemptChanges(region="New area",sector="New sector"))
+            session.expire_all()
+            result=await _append(session,{"user":user,"date":"2026-10-12","name":"C","grade":"6A"})
+            saved=await session.get(RouteAttempt,result["attemptId"])
+            self.assertEqual(saved.route_snapshot["areaId"],old_area)
+
     async def asyncSetUp(self):
         self.conn = await engine.connect()
         self.tx = await self.conn.begin()

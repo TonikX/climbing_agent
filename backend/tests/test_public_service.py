@@ -157,7 +157,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.send("2", "training:finish", True)
         await self.process()
         await self.send("2", "В последней тренировке все пролазы с зависанием, нижняя страховка")
-        await self.process("ai", Intent(kind="update_attempts", target_all=True,
+        await self.process("ai", Intent(kind="update_attempts", training_scope="last", target_all=True,
             changes=AttemptChanges(style="with_hangs", belay="lead")))
         values=(await self.conn.execute(select(RouteAttempt.clean_ascent,RouteAttempt.style,RouteAttempt.belay))).all()
         self.assertEqual([(x.clean_ascent,x.style,x.belay) for x in values],[(False,"with_hangs","lead")]*2)
@@ -271,7 +271,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         response=await self.client.patch("/api/v1/attempts/"+aid,headers=a,
             json={"expected_version":training.version,"grade":"6C"})
         self.assertEqual(response.status_code,200,response.text)
-        await self.process("ai",Intent(kind="update_attempts",target_all=True,changes=AttemptChanges(grade="6B")))
+        await self.process("ai",Intent(kind="update_attempts",training_scope="last",target_all=True,changes=AttemptChanges(grade="6B")))
         self.assertEqual((await self.conn.scalar(select(RouteAttempt.route_snapshot)))["grade"],"6C")
 
     async def test_stale_ai_cannot_write_to_next_training(self):

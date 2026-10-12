@@ -145,8 +145,6 @@ async def apply_intent(session, user, job, intent, reply):
         intent.changes = AttemptChanges.model_validate(intent.changes.model_dump(exclude_none=True, exclude_unset=True))
     scope = intent.training_scope
     anchor = {"id": job.training_id, "version": job.expected_version} if scope == "current" else job.payload.get("last_training") if scope=="last" else job.payload.get("selected_training")
-    if scope=="selected" and not anchor and not job.payload.get("selection_required"):
-        anchor=job.payload.get("last_training")
     if not anchor or not anchor.get("id"):
         await reply(session, job, "Выберите тренировку для изменения или удаления.", [[button("Выбрать тренировку","trainings:0")]])
         return

@@ -353,7 +353,7 @@ async def _append(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
         area = await session.get(Location, training.primary_location_id)
     section = await _section(session, area, p.get("sector"))
     if not section and training and training.sections:
-        section = training.sections[-1]
+        section = next((s for s in reversed(training.sections) if not area or s.location_id == area.id), None)
     if not training:
         training = TrainingSession(user_id=user.id, status="active", local_date=local_date,
                                    timezone=user.timezone, environment="unknown",
@@ -392,7 +392,7 @@ async def _save(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
         area = await session.get(Location, training.primary_location_id)
     section = await _section(session, area, p.get("sector"))
     if not section and training and training.sections:
-        section = training.sections[-1]
+        section = next((s for s in reversed(training.sections) if not area or s.location_id == area.id), None)
     merged = training is not None
     if not training:
         training = TrainingSession(user_id=user.id, status="completed", local_date=_date(p["date"]),
