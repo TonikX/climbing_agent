@@ -12,6 +12,13 @@ from app.public_schemas import Intent
 import test_auth_postgres as auth_tests
 
 
+def record_intent(**values):
+    facts = {"kind": "attempt", "region": "Test region", "sector": "Test sector",
+             "belay": "top_rope", "style": "with_hangs"}
+    facts.update(values)
+    return Intent(**facts)
+
+
 class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
     asyncSetUpBase = auth_tests.AuthPostgresTest.asyncSetUp
     asyncTearDownBase = auth_tests.AuthPostgresTest.asyncTearDown
@@ -31,7 +38,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
             item.stop()
         await self.asyncTearDownBase()
 
-    async def send(self, tid, text, callback=False, update_id=None, forwarded=False):
+    async def send(self, tid, text, callback=False, update_id=None, forwarded=False, voice=False):
         self.n += 1
         raw = {"update_id": update_id or self.n}
         actor = {"id": int(tid), "is_bot": False, "first_name": "Same name"}
@@ -47,6 +54,9 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
                 message["forward_origin"] = {"type": "user", "date": 1790000000, "sender_user": actor}
             raw["callback_query"] = {"id": str(self.n), "from": actor, "chat_instance": "test", "message": message, "data": text}
         else:
+            if voice:
+                message.pop("text")
+                message["voice"] = {"file_id": "test", "file_unique_id": "test", "duration": 2}
             raw["message"] = message
         result = await self.client.post("/api/v1/internal/telegram/updates", json=raw, headers={"X-API-Key": "test-auth-key"})
         self.assertEqual(result.status_code, 200, result.text)
@@ -85,6 +95,87 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         data=await self.conn.scalar(select(DialogState.data).where(DialogState.state=="attempt_delete"))
         await self.send("2", "am:delete:"+data["confirmation"], True)
         await self.process()
+
+    async def test_first_attempt_draft_voice_clarification_and_current_screen(self):
+        from app.models import Location, Section
+        from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup
+        await self.login("2")
+        await self.send("2", "Начать тренировку")
+        await self.process()
+        await self.send("2", "Гейкбаири, Кебап, Engesh 6a")
+        await self.process("ai", Intent(kind="attempt", region="Гейкбаири", sector="Кебап", name="Engesh", grade="6a", attempts=3))
+        self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))), 0)
+        prompt = await self.conn.scalar(select(Outbox.payload).where(Outbox.dedupe_key.like("job:%")).order_by(Outbox.sequence.desc()).limit(1))
+        self.assertIn("Чисто", prompt["text"])
+        self.assertIn("Страховка", prompt["text"])
+        self.assertNotIn("• Регион", prompt["text"])
+        await self.send("2", "🧗 Текущая тренировка")
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(DialogState.state)), "attempt_missing")
+        await self.send("2", "", voice=True)
+        item = await self.process("ai", Intent(kind="attempt", style="with_hangs", belay="lead", reached_top=True, hangs=1))
+        self.assertEqual(item["payload"]["pending_attempt"]["facts"]["name"], "Engesh")
+        row = (await self.conn.execute(select(RouteAttempt.route_snapshot, RouteAttempt.clean_ascent, RouteAttempt.style, RouteAttempt.belay, RouteAttempt.attempts))).one()
+        self.assertFalse(row.clean_ascent)
+        self.assertEqual((row.style, row.belay, row.attempts), ("with_hangs", "lead", 3))
+        self.assertEqual(await self.conn.scalar(select(Location.name).where(Location.id==row.route_snapshot["areaId"])), "Гейкбаири")
+        self.assertEqual(await self.conn.scalar(select(Section.name).where(Section.id==row.route_snapshot["sectorId"])), "Кебап")
+        self.assertEqual(await self.conn.scalar(select(func.count(DialogState.user_id))), 0)
+        await self.send("2", "🧗 Текущая тренировка")
+        await self.process()
+        screen = await self.conn.scalar(select(Outbox.payload).where(Outbox.dedupe_key.like("job:%")).order_by(Outbox.sequence.desc()).limit(1))
+        self.assertIn("Engesh", screen["text"])
+        self.assertIn("Гейкбаири", screen["text"])
+        markup = InlineKeyboardMarkup.model_validate(screen["reply_markup"])
+        self.assertTrue(any(x.callback_data.startswith("am:pick:") for row in markup.inline_keyboard for x in row))
+        self.assertTrue(any(x.callback_data=="training:location" for row in markup.inline_keyboard for x in row))
+        await self.send("2", "🏠 Главное меню")
+        await self.process()
+        payload = await self.conn.scalar(select(Outbox.payload).where(Outbox.dedupe_key.like("job:%")).order_by(Outbox.sequence.desc()).limit(1))
+        markup = ReplyKeyboardMarkup.model_validate(payload["reply_markup"])
+        labels = [x.text for row in markup.keyboard for x in row]
+        self.assertIn("🧗 Текущая тренировка", labels)
+        self.assertIn("🏠 Главное меню", labels)
+        self.assertNotIn("📋 Все попытки", labels)
+        ai_before = await self.conn.scalar(select(func.count(Job.id)).where(Job.lane=="ai"))
+        await self.send("2", "📊 Статистика")
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(func.count(Job.id)).where(Job.lane=="ai")), ai_before)
+        await self.send("2", "Другая 6b flash, верхняя")
+        await self.process("ai", Intent(kind="attempt", name="Другая", grade="6b", style="flash", belay="top_rope"))
+        self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))), 2)
+        inherited = await self.conn.scalar(select(RouteAttempt.route_snapshot).order_by(RouteAttempt.sequence.desc()).limit(1))
+        self.assertEqual((inherited["areaId"], inherited["sectorId"]), (row.route_snapshot["areaId"], row.route_snapshot["sectorId"]))
+        aid = await self.conn.scalar(select(RouteAttempt.id).order_by(RouteAttempt.sequence.desc()).limit(1))
+        await self.send("2", "am:pick:"+aid, True)
+        await self.process()
+        editor = (await self.conn.scalar(select(DialogState.data)))["editor_token"]
+        await self.send("2", "am:field:"+editor+":region", True)
+        await self.process()
+        await self.send("2", "🧪 Тестовый режим")
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(RouteAttempt.route_snapshot).where(RouteAttempt.id==aid)), inherited)
+        await self.send("2", "🏠 Главное меню")
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(RouteAttempt.route_snapshot).where(RouteAttempt.id==aid)), inherited)
+
+    async def test_draft_cancel_invalidates_inflight_answer(self):
+        await self.login("2")
+        await self.send("2", "training:start", True)
+        await self.process()
+        await self.send("2", "Engesh 6a")
+        await self.process("ai", Intent(kind="attempt", name="Engesh", grade="6a"))
+        await self.send("2", "Гейкбаири, Кебап, flash, нижняя")
+        headers = {"X-API-Key": "test-auth-key"}
+        item = (await self.client.post("/api/v1/internal/jobs/claim", headers=headers,
+            json={"worker_id":"ai", "lane":"ai"})).json()["item"]
+        self.assertTrue(item["payload"]["pending_attempt"])
+        await self.send("2", "/cancel")
+        self.assertTrue(await self.process())
+        result = await self.client.post(f"/api/v1/internal/jobs/ai/{item['id']}/complete", headers=headers,
+            json={"worker_id":"ai", "intent":Intent(kind="attempt", region="Гейкбаири", sector="Кебап", style="flash", belay="lead").model_dump(mode="json",exclude_none=True)})
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))), 0)
 
     async def test_pending_account_cannot_read_or_spend_and_owner_decides_once(self):
         await self.login("1")
@@ -131,7 +222,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.process()
         await self.send("2", "Трасса 6B, верхняя страховка, долез с зависанием")
         self.assertEqual(await self.conn.scalar(select(Job.lane).order_by(Job.sequence.desc()).limit(1)), "ai")
-        await self.process("ai", Intent(kind="attempt", name="Трасса", grade="6B", reached_top=True,
+        await self.process("ai", record_intent(name="Трасса", grade="6B", reached_top=True,
                                        clean_ascent=True, hangs=1, belay="top_rope"))
         saved = (await self.conn.execute(select(RouteAttempt.reached_top, RouteAttempt.clean_ascent,
                                                RouteAttempt.hangs, RouteAttempt.belay))).one()
@@ -150,7 +241,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.process()
         for name in ("Первая", "Вторая"):
             await self.send("2", f"{name} 6A")
-            await self.process("ai", Intent(kind="attempt", name=name, grade="6A"))
+            await self.process("ai", record_intent(name=name, grade="6A"))
         initial = (await self.conn.execute(select(RouteAttempt.id, RouteAttempt.training_id, RouteAttempt.clean_ascent,
             RouteAttempt.belay).order_by(RouteAttempt.sequence))).all()
         self.assertEqual([(x.clean_ascent, x.belay) for x in initial], [(False,"top_rope")]*2)
@@ -172,7 +263,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.send("2", "training:start", True)
         await self.process()
         await self.send("2", "Третья 6B со срывом")
-        await self.process("ai", Intent(kind="attempt",name="Третья",grade="6B",falls=1))
+        await self.process("ai", record_intent(name="Третья",grade="6B",falls=1))
         current_id=await self.conn.scalar(select(RouteAttempt.id).where(RouteAttempt.route_snapshot["name"].astext=="Третья"))
         await self.send("2", "Удали пролаз Третья текущей тренировки")
         await self.process("ai", Intent(kind="delete_attempts",training_scope="current",target_name="Третья"))
@@ -182,7 +273,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),2)
         for name in ("Четвёртая", "Пятая"):
             await self.send("2", name+" 6A")
-            await self.process("ai", Intent(kind="attempt",name=name,grade="6A"))
+            await self.process("ai", record_intent(name=name,grade="6A"))
         tid=await self.conn.scalar(select(RouteAttempt.training_id).where(RouteAttempt.route_snapshot["name"].astext=="Четвёртая"))
         await self.send("2", "tr:"+tid, True)
         await self.process()
@@ -215,7 +306,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
             await self.send("2","training:start",True)
             await self.process()
             await self.send("2",name+" 6A")
-            await self.process("ai",Intent(kind="attempt",name=name,grade="6A"))
+            await self.process("ai",record_intent(name=name,grade="6A"))
             row=(await self.conn.execute(select(RouteAttempt.id,RouteAttempt.training_id).where(
                 RouteAttempt.route_snapshot["name"].astext==name))).one()
             attempts.append(row)
@@ -236,7 +327,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.conn.scalar(select(Location.name).where(Location.id==snapshot["areaId"])),"Крым")
         self.assertEqual(await self.conn.scalar(select(Section.name).where(Section.id==snapshot["sectorId"])),"Красный камень")
         other=await self.conn.scalar(select(RouteAttempt.route_snapshot).where(RouteAttempt.id==attempts[1].id))
-        self.assertIsNone(other["areaId"])
+        self.assertEqual(await self.conn.scalar(select(Location.name).where(Location.id==other["areaId"])),"Test region")
         await self.send("2","am:pick:"+attempts[0].id,True)
         await self.process()
         editor=(await self.conn.scalar(select(DialogState.data).where(DialogState.state=="attempt_edit")))["editor_token"]
@@ -259,7 +350,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.send("2","training:start",True)
         await self.process()
         await self.send("2","Трасса 6A")
-        await self.process("ai",Intent(kind="attempt",name="Трасса",grade="6A"))
+        await self.process("ai",record_intent(name="Трасса",grade="6A"))
         aid=await self.conn.scalar(select(RouteAttempt.id))
         await self.send("3","am:pick:"+aid,True)
         await self.process()
@@ -289,7 +380,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.send("2", "training:start", True)
         await self.process()
         late = await self.client.post(f"/api/v1/internal/jobs/ai/{ai['id']}/complete", headers=headers,
-            json={"worker_id": "ai", "intent": Intent(kind="attempt", name="Трасса", grade="6B", style="flash").model_dump(mode="json")})
+            json={"worker_id": "ai", "intent": record_intent(name="Трасса", grade="6B", style="flash").model_dump(mode="json")})
         self.assertEqual(late.status_code, 409)
         self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))), 0)
 
@@ -298,13 +389,13 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.send("2", "training:start", True)
         await self.process()
         await self.send("2", "Трасса 6B флеш, один срыв")
-        item = await self.process("ai", Intent(kind="attempt", name="Трасса", grade="6B", style="flash", falls=1, reached_top=True))
+        item = await self.process("ai", record_intent(name="Трасса", grade="6B", style="flash", falls=1, reached_top=True))
         rows = (await self.conn.execute(select(RouteAttempt))).all()
         self.assertEqual(len(rows), 1)
         self.assertFalse(rows[0].clean_ascent)
         self.assertEqual(rows[0].style, "with_falls")
         retry = await self.client.post(f"/api/v1/internal/jobs/ai/{item['id']}/complete", headers={"X-API-Key": "test-auth-key"},
-             json={"worker_id": "worker", "intent": Intent(kind="attempt", name="Трасса", grade="6B").model_dump(mode="json")})
+             json={"worker_id": "worker", "intent": record_intent(name="Трасса", grade="6B").model_dump(mode="json")})
         self.assertEqual(retry.status_code, 409)
         self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))), 1)
 

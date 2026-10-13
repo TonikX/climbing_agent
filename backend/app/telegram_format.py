@@ -22,12 +22,19 @@ def ascent_card(item, region=None, sector=None):
 
 
 def menu(active: bool = False) -> list:
-    return [[button("Завершить тренировку" if active else "Начать тренировку", "training:finish" if active else "training:start")],
-            [button("💬 Записать пролаз", "attempt:ai")],
+    return [[button("🧗 Текущая тренировка" if active else "Начать тренировку", "training:details:current" if active else "training:start")],
             [button("✏️ Тренировки и пролазы", "trainings:0")],
-            [button("📍 Место тренировки", "training:location")],
-            [button("📋 Все попытки", "training:details:current"), button("📊 Статистика", "stats:menu")],
+            [button("📊 Статистика", "stats:menu")],
             [button("👤 Профиль", "profile"), button("🧪 Тестовый режим", "test:menu")]]
+
+
+MENU_COMMANDS = {item["text"]: item["callback_data"] for active in (False, True) for row in menu(active) for item in row}
+MENU_COMMANDS["🏠 Главное меню"] = "journal"
+
+
+def reply_menu(active=False):
+    return {"keyboard": [[{"text": item["text"]} for item in row] for row in menu(active)] +
+            [[{"text": "🏠 Главное меню"}]], "resize_keyboard": True, "is_persistent": True}
 
 
 def stats_menu() -> list:

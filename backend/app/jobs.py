@@ -43,10 +43,14 @@ async def ingest(session, raw: dict) -> dict:
     await session.flush()
     command = event.data if envelope.callback_query else (msg.text or "")
     command = command.split("@", 1)[0] if command.startswith("/") else command
+    from app.telegram_format import MENU_COMMANDS
+    menu_command = not envelope.callback_query and command in MENU_COMMANDS
+    if menu_command:
+        command = MENU_COMMANDS[command]
     voice = msg.voice if not envelope.callback_query else None
-    lane = "fast" if envelope.callback_query or command.startswith("/") or user.status != "active" else "ai"
+    lane = "fast" if menu_command or envelope.callback_query or command.startswith("/") or user.status != "active" else "ai"
     dialog = await session.get(DialogState, user.id)
-    if dialog and (dialog.data.get("form") != "attempt_manage" or dialog.state == "attempt_value"):
+    if dialog and (dialog.data.get("form") not in ("attempt_manage", "attempt_capture") or dialog.state == "attempt_value"):
         lane = "fast"
     if not command and not voice:
         lane, command = "fast", "unsupported"
@@ -58,6 +62,8 @@ async def ingest(session, raw: dict) -> dict:
     read_only = command.startswith(("stats:", "gear:menu", "training:details:")) or command in ("/stats", "/journal", "journal", "stats:menu", "profile", "/profile", "/gear")
     if command in ("training:finish", "training:finish:cancel", "/finish"):
         read_only = True  # The handler offers wait/cancel instead of waiting behind AI.
+    if command == "/cancel" and dialog and dialog.data.get("form") == "attempt_capture":
+        read_only = True  # Cancelling a draft must also invalidate in-flight clarification.
     await set_user_context(session, user.id)
     active = await session.scalar(select(TrainingSession).where(TrainingSession.user_id == user.id, TrainingSession.status == "active"))
     payload = {"command": command[:8000], "telegram_id": tid, "chat_id": cid, "username": actor.username,
@@ -160,13 +166,21 @@ async def claim(session, lane: str, worker_id: str):
         from zoneinfo import ZoneInfo
         item.payload = {**item.payload, "local_date": datetime.now(ZoneInfo(user.timezone)).date().isoformat()}
         await set_user_context(session, user.id)
+        from app.attempt_capture import valid_draft
+        dialog = await session.get(DialogState, user.id)
+        if valid_draft(dialog, item.training_id):
+            item.payload = {**item.payload, "pending_attempt": dialog.data}
         from app.models import RouteAttempt
         previous = await session.scalar(select(RouteAttempt).join(TrainingSession).where(
             TrainingSession.user_id == user.id, TrainingSession.id == item.training_id,
             TrainingSession.status == "active").order_by(RouteAttempt.sequence.desc()).limit(1))
         if previous:
-            item.payload = {**item.payload, "last_route": {"name": previous.route_snapshot.get("name"),
-                                                         "grade": previous.route_snapshot.get("grade")}}
+            from app.models import Location, Section
+            snapshot = previous.route_snapshot or {}
+            area = await session.get(Location, snapshot["areaId"]) if snapshot.get("areaId") else None
+            sector = await session.get(Section, snapshot["sectorId"]) if snapshot.get("sectorId") else None
+            item.payload = {**item.payload, "last_route": {"name": snapshot.get("name"), "grade": snapshot.get("grade"),
+                "region": area.name if area else None, "sector": sector.name if sector else None}}
         queued = await session.scalar(select(func.count(Job.id)).where(Job.user_id == item.user_id,
                    Job.lane == "ai", Job.status.in_(["pending", "processing"])))
         try:

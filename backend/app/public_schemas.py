@@ -30,6 +30,8 @@ class AttemptChanges(Strict):
 
 class Intent(Strict):
     kind: Literal["statistics", "attempt", "update_attempts", "delete_attempts", "clarify"]
+    region: str | None = Field(default=None, min_length=1, max_length=200)
+    sector: str | None = Field(default=None, min_length=1, max_length=200)
     training_scope: Literal["selected", "current", "last"] = "selected"
     target_numbers: list[int] = Field(default_factory=list, max_length=100)
     target_name: str | None = Field(default=None, max_length=200)
@@ -47,7 +49,7 @@ class Intent(Strict):
     hangs: int | None = Field(default=None, ge=0, le=1000)
     style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] = "unknown"
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] = "unknown"
-    attempts: int = Field(default=1, ge=1, le=100)
+    attempts: int | None = Field(default=None, ge=1, le=100)
     notes: str | None = Field(default=None, max_length=1000)
     is_test: bool = False
     continue_current_route: bool = False

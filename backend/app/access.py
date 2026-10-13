@@ -27,10 +27,10 @@ async def telegram_user(session: AsyncSession, telegram_id: str, name: str = "С
 
 
 async def message(session: AsyncSession, user_id: str | None, chat_id: str, key: str, text_value: str,
-                  keyboard: list | None = None, document: dict | None = None, access_request_id: str | None = None) -> None:
+                  keyboard: list | dict | None = None, document: dict | None = None, access_request_id: str | None = None) -> None:
     payload = {"text": text_value[:4000]}
     if keyboard:
-        payload["reply_markup"] = {"inline_keyboard": keyboard}
+        payload["reply_markup"] = keyboard if isinstance(keyboard, dict) else {"inline_keyboard": keyboard}
     if document:
         payload["document"] = document
     await session.execute(insert(Outbox).values(id=new_id("outbox"), user_id=user_id, chat_id=chat_id,

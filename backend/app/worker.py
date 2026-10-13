@@ -9,7 +9,7 @@ from uuid import uuid4
 import httpx
 from aiogram import Bot
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError
-from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
+from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
 from app.ai_provider import interpret
 from app.config import get_settings
@@ -68,7 +68,9 @@ async def run(lane: str):
                         result.update(intent=intent.model_dump(mode="json", exclude_none=True), tokens=tokens)
                     elif lane == "delivery":
                         payload = item["payload"]
-                        markup = InlineKeyboardMarkup.model_validate(payload["reply_markup"]) if payload.get("reply_markup") else None
+                        raw_markup = payload.get("reply_markup")
+                        markup_type = ReplyKeyboardMarkup if raw_markup and "keyboard" in raw_markup else InlineKeyboardMarkup
+                        markup = markup_type.model_validate(raw_markup) if raw_markup else None
                         if "callback_id" in payload:
                             await bot.answer_callback_query(payload["callback_id"])
                         elif "document" in payload:

@@ -266,12 +266,12 @@ async def handle(session, user, job, reply):
             await reply(session,job,"Выберите попытку заново: карточка устарела.")
             return True
         return False
+    if command != "/cancel" and (command.startswith(("stats:","training:","attempt:","profile","gear:","journal","test:")) or command.startswith("/")):
+        return False
     if command in ("am:cancel","/cancel") or dialog.created_at < now()-timedelta(minutes=5):
         await session.delete(dialog)
         await reply(session,job,"Действие отменено.",menu(bool(await training_for(session,user.id,"current"))))
         return True
-    if command.startswith(("stats:","training:","attempt:","profile","gear:","journal")) or command.startswith("/"):
-        return False
     data=dialog.data
     if command.startswith("am:ai:"):
         if command.removeprefix("am:ai:")!=data.get("editor_token"):

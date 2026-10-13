@@ -23,8 +23,8 @@ async def handle(session, user, job, reply) -> bool:
         else:
             await reply(session, job,
                 "Опишите пролаз одним сообщением или отправьте голосовое. AI разберёт запись и сохранит её в текущей тренировке.\n"
-                "Например: «Подушка безопасности 6A, флеш, верхняя страховка, без срывов и зависаний».\n"
-                "Если название или категория неясны, бот попросит уточнить запись.",
+                "Например: «Гейкбаири, сектор Кебап, Engesh 6a, с зависанием, нижняя страховка».\n"
+                "Бот спросит недостающие данные перед сохранением. /cancel — отменить черновик.",
                 [[button("✍️ Заполнить вручную", "attempt:form")], [button("← Журнал", "journal")]])
         return True
     if command in ("profile:timezone", "profile:name", "gear:form"):
@@ -63,7 +63,7 @@ async def handle(session, user, job, reply) -> bool:
         session.add(DialogState(user_id=user.id, state="name", data={"training_id": active.id}))
         await reply(session, job, "Введите название трассы. /cancel — отменить форму.")
         return True
-    if dialog and dialog.data.get("form") == "attempt_manage":
+    if dialog and dialog.data.get("form") in ("attempt_manage", "attempt_capture") and command != "/cancel":
         return False
     if not dialog:
         return False
