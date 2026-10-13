@@ -43,7 +43,7 @@ const Weather = Type.Object({
 }, { additionalProperties: false });
 
 const Style = Type.Union([
-  Type.Literal("onsight"), Type.Literal("flash"), Type.Literal("redpoint"), Type.Literal("unknown"),
+  Type.Literal("onsight"), Type.Literal("flash"), Type.Literal("redpoint"), Type.Literal("top_rope"), Type.Literal("unknown"),
 ]);
 const Belay = Type.Union([
   Type.Literal("lead"), Type.Literal("top_rope"), Type.Literal("auto_belay"),

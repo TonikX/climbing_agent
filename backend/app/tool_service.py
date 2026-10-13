@@ -561,6 +561,7 @@ def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
         "onsightCount": styles["onsight"],
         "flashCount": styles["flash"],
         "redpointCount": styles["redpoint"],
+        "topRopeStyleAttemptsCount": sum(a.attempts for a in attempts if a.style == "top_rope"),
         "unknownStyleCount": styles["unknown"],
         "withFallsAttemptsCount": sum(a.attempts for a in attempts if a.style == "with_falls"),
         "withHangsAttemptsCount": sum(a.attempts for a in attempts if a.style == "with_hangs"),

@@ -32,6 +32,27 @@ test_user.__test__ = False
 
 
 class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
+    async def test_upper_style_migration_preserves_records_and_accepts_new_style(self):
+        await self.conn.run_sync(Base.metadata.create_all)
+        async with AsyncSession(bind=self.conn, expire_on_commit=False) as session:
+            user = await test_user(session, "Upper migration")
+            old = await _append(session, {"user":user, "name":"Existing", "grade":"6A", "style":"flash", "belay":"top_rope"})
+            await session.execute(text("ALTER TABLE route_attempts DROP CONSTRAINT ck_attempt_style"))
+            await session.execute(text("ALTER TABLE route_attempts ADD CONSTRAINT ck_attempt_style CHECK (style IN ('onsight','flash','redpoint','with_falls','with_hangs','unknown'))"))
+            spec = importlib.util.spec_from_file_location("upper_style_migration",
+                Path(__file__).parents[1] / "migrations/versions/20261013_0014_top_rope_style.py")
+            migration = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(migration)
+            def upgrade(conn):
+                with Operations.context(MigrationContext.configure(conn)):
+                    migration.upgrade()
+            await self.conn.run_sync(upgrade)
+            new = await _append(session, {"user":user, "name":"Upper", "grade":"6B", "style":"top_rope", "belay":"top_rope", "cleanAscent":True, "hangs":1})
+            self.assertEqual((await session.get(RouteAttempt, old["attemptId"])).style, "flash")
+            saved = await session.get(RouteAttempt, new["attemptId"])
+            self.assertEqual(saved.style, "top_rope")
+            self.assertFalse(saved.clean_ascent)
+
     async def test_append_after_editing_one_attempt_location_uses_training_area(self):
         from app.attempt_management import patch_rows
         from app.public_schemas import AttemptChanges

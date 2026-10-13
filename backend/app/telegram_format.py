@@ -7,7 +7,7 @@ def button(text: str, data: str) -> dict:
 
 
 STYLE_NAMES = {"onsight": "Onsight", "flash": "Flash", "redpoint": "Red Point",
-               "with_falls": "Со срывом", "with_hangs": "С зависанием", "unknown": "Не указан"}
+               "with_falls": "Со срывом", "with_hangs": "С зависанием", "top_rope": "Верхняя", "unknown": "Не указан"}
 BELAY_NAMES = {"lead": "Нижняя", "top_rope": "Верхняя", "auto_belay": "Автостраховка",
                "bouldering": "Боулдеринг", "unknown": "Не указана"}
 
@@ -55,6 +55,7 @@ def summary(dto: dict) -> str:
              f"❓ {value.get('unknownCleanRoutes', 0)} — чистота не уточнена",
              f"👁 {value.get('onsightCount', 0)} Onsight", f"⚡ {value.get('flashCount', 0)} Flash",
              f"🎯 {value.get('redpointCount', 0)} Red Point",
+             f"🪢 Верхняя (стиль): {value.get('topRopeStyleAttemptsCount', 0)} попыток",
              f"❔ {value.get('unknownStyleCount', 0)} — стиль не указан",
              f"Со срывом: {value.get('withFallsAttemptsCount', 0)} попыток",
              f"С зависанием: {value.get('withHangsAttemptsCount', 0)} попыток",

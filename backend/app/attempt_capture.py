@@ -9,7 +9,7 @@ from app.telegram_format import button, menu
 from app.tool_service import _active, execute_tool
 
 FIELDS = {"region": "Регион", "sector": "Сектор", "name": "Название трассы", "grade": "Категория",
-          "clean_ascent": "Чисто: да или нет", "style": "Стиль: onsight / flash / redpoint / со срывом / с зависанием",
+          "clean_ascent": "Чисто: да или нет", "style": "Стиль: onsight / flash / redpoint / верхняя / со срывом / с зависанием",
           "belay": "Страховка: нижняя / верхняя / автостраховка / боулдеринг"}
 
 
@@ -50,9 +50,9 @@ async def save_or_ask(session, user, job, intent, reply):
             facts[key] = defaults[key]
     if facts.get("falls") or facts.get("hangs") or facts.get("style") in ("with_falls", "with_hangs"):
         facts["clean_ascent"] = False
-        if facts.get("falls"):
+        if facts.get("falls") and facts.get("style") != "top_rope":
             facts["style"] = "with_falls"
-        elif facts.get("hangs"):
+        elif facts.get("hangs") and facts.get("style") != "top_rope":
             facts["style"] = "with_hangs"
     elif facts.get("style") in ("onsight", "flash", "redpoint"):
         facts.setdefault("clean_ascent", True)

@@ -168,10 +168,11 @@ async def handle(session, user, job, reply) -> bool:
         data["reachedTop"], dialog.state = command == "form:yes", "style"
         await reply(session, job, "Стиль попытки?", [[button("Onsight", "form:onsight"), button("Flash", "form:flash")],
                        [button("Red Point", "form:redpoint"), button("Не указан", "form:unknown")],
+                       [button("Верхняя", "form:top_rope")],
                        [button("Со срывом", "form:with_falls"), button("С зависанием", "form:with_hangs")]])
     elif dialog.state == "style":
         value = command.removeprefix("form:")
-        if value not in ("onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"):
+        if value not in ("onsight", "flash", "redpoint", "with_falls", "with_hangs", "top_rope", "unknown"):
             return True
         data["style"], dialog.state = value, "clean"
         await reply(session, job, "Пролезли чисто, без срывов и зависаний?", [[button("Да", "form:yes"), button("Нет", "form:no")]])

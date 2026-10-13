@@ -25,6 +25,8 @@ def has_nonclean_evidence(raw: dict, current=None) -> bool:
 
 def normalized_style(raw: dict, current=None) -> str:
     style = str(raw.get("style", getattr(current, "style", "unknown")) or "unknown")
+    if style == "top_rope":
+        return style  # Cleanliness remains independent and is checked by outcome().
     if raw.get("falls", getattr(current, "falls", 0)):
         return "with_falls"
     if raw.get("hangs", getattr(current, "hangs", 0)):

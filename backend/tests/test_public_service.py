@@ -268,6 +268,35 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         login = await self.client.post("/api/v1/internal/auth/telegram", json={"telegram_id": "2"}, headers={"X-API-Key": "test-auth-key"})
         self.assertEqual(login.status_code, 200, login.text)
 
+    async def test_upper_style_manual_ai_editor_and_statistics_keep_cleanliness_independent(self):
+        headers = await self.login("2")
+        for value, callback in (("training:start", True), ("attempt:form", True), ("Верхняя трасса", False), ("6B", False),
+            ("form:top_rope", True), ("form:yes", True), ("form:top_rope", True), ("form:yes", True), ("0", False), ("1", False)):
+            await self.send("2", value, callback)
+            await self.process()
+        saved = (await self.conn.execute(select(RouteAttempt.id, RouteAttempt.style, RouteAttempt.clean_ascent, RouteAttempt.belay))).one()
+        self.assertEqual((saved.style, saved.clean_ascent, saved.belay), ("top_rope", False, "top_rope"))
+        await self.send("2", "Вторая, верхняя, чисто")
+        await self.process("ai", record_intent(name="Вторая", grade="6A", style="top_rope", clean_ascent=True, falls=0, hangs=0))
+        await self.send("2", "Тестовая верхняя")
+        await self.process("ai", record_intent(name="Тестовая верхняя", grade="9C", style="top_rope", clean_ascent=True, falls=1, is_test=True))
+        stats = await self.client.get("/api/v1/statistics/month", headers=headers)
+        self.assertEqual(stats.status_code, 200, stats.text)
+        self.assertEqual(stats.json()["topRopeStyleAttemptsCount"], 2)
+        self.assertEqual(stats.json()["completedRoutes"], 1)
+        await self.send("2", "am:pick:"+saved.id, True)
+        await self.process()
+        editor = (await self.conn.scalar(select(DialogState.data)))["editor_token"]
+        await self.send("2", "am:field:"+editor+":style", True)
+        await self.process()
+        data = await self.conn.scalar(select(DialogState.data))
+        payload = await self.conn.scalar(select(Outbox.payload).where(Outbox.dedupe_key.like("job:%")).order_by(Outbox.sequence.desc()).limit(1))
+        self.assertTrue(any(x["text"]=="Верхняя" for row in payload["reply_markup"]["inline_keyboard"] for x in row))
+        await self.send("2", "am:value:"+data["value_token"]+":top_rope", True)
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(RouteAttempt.style).where(RouteAttempt.id==saved.id)), "top_rope")
+        self.assertFalse(await self.conn.scalar(select(RouteAttempt.clean_ascent).where(RouteAttempt.id==saved.id)))
+
     async def test_ai_entry_exits_manual_form_and_saves_interpreted_attempt(self):
         await self.login("2")
         await self.send("2", "training:start", True)

@@ -100,6 +100,7 @@ function summaryLines(title: string, value: JsonRecord, subtitle?: string): stri
     `👁 ${number(value.onsightCount)} Onsight`,
     `⚡ ${number(value.flashCount)} Flash`,
     `🎯 ${number(value.redpointCount)} Red Point`,
+    `🪢 Верхняя (стиль): ${number(value.topRopeStyleAttemptsCount)} попыток`,
     `❔ ${number(value.unknownStyleCount)} — стиль не указан`,
     `🔄 ${number(value.activeProjects)} проекта`,
     "",
@@ -116,7 +117,7 @@ function summaryLines(title: string, value: JsonRecord, subtitle?: string): stri
 }
 
 function styleLabel(value: unknown): string {
-  return ({ onsight: "Onsight", flash: "Flash", redpoint: "Red Point", unknown: "не указан" } as Record<string, string>)[String(value)] ?? text(value);
+  return ({ onsight: "Onsight", flash: "Flash", redpoint: "Red Point", top_rope: "Верхняя", unknown: "не указан" } as Record<string, string>)[String(value)] ?? text(value);
 }
 
 function belayLabel(value: unknown): string {
