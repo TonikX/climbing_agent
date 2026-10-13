@@ -318,6 +318,13 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.process()
         await self.send("2","tr:"+attempts[0].training_id,True)
         await self.process()
+        overview = await self.conn.scalar(select(Outbox.payload).where(Outbox.dedupe_key.like("job:%")).order_by(Outbox.sequence.desc()).limit(1))
+        self.assertIn("Статус: завершена", overview["text"])
+        self.assertIn("Регион: Test region", overview["text"])
+        self.assertIn("Секторы: Test sector", overview["text"])
+        self.assertIn("1 трасс · 1 попыток", overview["text"])
+        self.assertIn("С зависанием: 1 попыток", overview["text"])
+        self.assertTrue(any(button["callback_data"]=="am:pick:"+attempts[0].id for row in overview["reply_markup"]["inline_keyboard"] for button in row))
         await self.send("2","am:pick:"+attempts[0].id,True)
         await self.process()
         await self.send("2","Измени район на Крым и сектор на Красный камень")
@@ -342,6 +349,17 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.confirm_attempt_deletion()
         self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),1)
         self.assertEqual(await self.conn.scalar(select(RouteAttempt.id)),attempts[1].id)
+        owner = await self.login("2")
+        version = await self.conn.scalar(select(TrainingSession.version).where(TrainingSession.id==attempts[1].training_id))
+        marked = await self.client.patch("/api/v1/attempts/"+attempts[1].id, headers=owner,
+            json={"expected_version":version, "is_test":True})
+        self.assertEqual(marked.status_code, 200, marked.text)
+        await self.send("2", "tr:"+attempts[1].training_id, True)
+        await self.process()
+        overview = await self.conn.scalar(select(Outbox.payload).where(Outbox.dedupe_key.like("job:%")).order_by(Outbox.sequence.desc()).limit(1))
+        self.assertIn("0 трасс · 0 попыток", overview["text"])
+        self.assertIn("Тестовых записей: 1", overview["text"])
+        self.assertTrue(any(button["callback_data"]=="am:pick:"+attempts[1].id for row in overview["reply_markup"]["inline_keyboard"] for button in row))
 
     async def test_edit_uses_saved_version_and_foreign_button_is_rejected(self):
         from app.public_schemas import AttemptChanges

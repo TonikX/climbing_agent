@@ -11,7 +11,7 @@ from app.attempt_outcome import outcome, normalized_style
 from app.models import Location, Section, RouteAttempt, TrainingSession, User
 from app.public_models import DialogState
 from app.public_schemas import AttemptChanges
-from app.telegram_format import button, menu, ascent_card, STYLE_NAMES, BELAY_NAMES
+from app.telegram_format import button, menu, ascent_card, summary, STYLE_NAMES, BELAY_NAMES
 from app.jobs import now
 
 
@@ -22,9 +22,11 @@ async def training_for(session, uid, scope):
         TrainingSession.created_at.desc(), TrainingSession.id.desc()).limit(1))
 
 
-async def rows(session, uid, tid):
-    return list((await session.scalars(select(RouteAttempt).join(TrainingSession).where(
-        TrainingSession.user_id == uid, TrainingSession.id == tid).order_by(RouteAttempt.sequence).limit(1001))).all())
+async def rows(session, uid, tid, limit=1001):
+    query = select(RouteAttempt).join(TrainingSession).where(
+        TrainingSession.user_id == uid, TrainingSession.id == tid).order_by(RouteAttempt.sequence)
+    query = query.limit(limit) if limit is not None else query.options(selectinload(RouteAttempt.route))
+    return list((await session.scalars(query)).all())
 
 
 async def locked_training(session, uid, tid, version):
@@ -360,10 +362,24 @@ async def selection_screen(session, uid, job, dialog, reply):
 
 
 async def attempt_list(session, uid, job, training, start, reply):
-    values=await rows(session,uid,training.id)
+    values=await rows(session,uid,training.id,limit=None)
+    from app.tool_service import _summary, _duration_minutes
+    region = await session.get(Location, training.primary_location_id) if training.primary_location_id else None
+    sector_ids = {x.route_snapshot.get("sectorId") for x in values if x.route_snapshot.get("sectorId")}
+    sectors = list((await session.scalars(select(Section.name).where(Section.id.in_(sector_ids)).order_by(Section.name))).all()) if sector_ids else []
+    duration = _duration_minutes(training)
+    overview = (f"🧗 Тренировка {training.local_date:%d.%m.%Y}\n"
+                f"Статус: {'текущая' if training.status == 'active' else 'завершена'}\n"
+                f"Регион: {region.name if region else 'Не указан'}\n"
+                f"Секторы: {', '.join(sectors) if sectors else 'Не указаны'}\n"
+                f"Продолжительность: {str(duration)+' мин' if duration is not None else 'Не указана'}\n\n"
+                + summary(_summary(values)))
+    test_count = sum(x.is_test for x in values)
+    if test_count:
+        overview += f"\n\n🧪 Тестовых записей: {test_count} — не включены в сводку."
     keyboard=[[button(("🧪 " if x.is_test else "")+f"№{x.sequence} · {(x.route_snapshot or {}).get('name')}"[:60],"am:pick:"+x.id)] for x in values[start:start+15]]
     if start+15<len(values): keyboard.append([button("Далее",f"attempts:{training.id}:{start+15}")])
     if start: keyboard.append([button("Назад",f"attempts:{training.id}:{max(0,start-15)}")])
     keyboard.extend([[button("🗑 Выбрать несколько для удаления","am:select")],
                      [button("← Выбрать другую тренировку","trainings:0")]])
-    await reply(session,job,f"Тренировка {training.local_date:%d.%m.%Y}. Выберите пролаз или опишите изменения через LLM.",keyboard)
+    await reply(session,job,overview+"\n\nВыберите пролаз для изменения или опишите изменения через LLM.",keyboard)
