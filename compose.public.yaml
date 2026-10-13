@@ -77,6 +77,7 @@ services:
       DB_PASSWORD: ${MIGRATION_DB_PASSWORD}
       RUNTIME_DB_PASSWORD: ${RUNTIME_DB_PASSWORD}
       CONTROL_DB_PASSWORD: ${CONTROL_DB_PASSWORD}
+      IMPORTER_DB_PASSWORD: ${IMPORTER_DB_PASSWORD:-}
       PUBLIC_MIGRATION_MANIFEST: "${PUBLIC_MIGRATION_MANIFEST:-}"
     depends_on:
       postgres: {condition: service_healthy}
@@ -92,6 +93,21 @@ services:
       interval: 10s
       timeout: 6s
       retries: 10
+
+  importer:
+    <<: *runtime
+    profiles: [import]
+    restart: "no"
+    command: [python, -m, app.allclimb]
+    environment:
+      INTERNAL_API_KEY: catalog-importer-no-api-access
+      DB_HOST: postgres
+      DB_NAME: ${POSTGRES_DB:-climbing_journal}
+      DB_USER: climbing_importer_login
+      DB_PASSWORD: ${IMPORTER_DB_PASSWORD:-}
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    networks: [backend, egress]
 
   bot:
     <<: *runtime

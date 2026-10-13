@@ -13,11 +13,16 @@ def main():
     cfg = get_settings()
     runtime_password = os.environ["RUNTIME_DB_PASSWORD"]
     control_password = os.environ["CONTROL_DB_PASSWORD"]
+    importer_password = os.environ.get("IMPORTER_DB_PASSWORD")
     with psycopg.connect(host=cfg.db_host, port=cfg.db_port, dbname=cfg.db_name,
                         user=cfg.db_user, password=cfg.db_password.get_secret_value(), autocommit=True) as conn:
-        for role, login, password in (("climbing_control", False, None),
+        roles = [("climbing_control", False, None),
                                       ("climbing_runtime", True, runtime_password),
-                                      ("climbing_control_login", True, control_password)):
+                                      ("climbing_control_login", True, control_password),
+                                      ("climbing_catalog_importer", False, None)]
+        if importer_password:
+            roles.append(("climbing_importer_login", True, importer_password))
+        for role, login, password in roles:
             if not conn.execute("SELECT 1 FROM pg_roles WHERE rolname=%s", (role,)).fetchone():
                 conn.execute(sql.SQL("CREATE ROLE {} {} NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS").format(
                     sql.Identifier(role), sql.SQL("LOGIN" if login else "NOLOGIN")))
@@ -27,12 +32,17 @@ def main():
             if any(props):
                 raise RuntimeError("Runtime/control roles must not be privileged")
         conn.execute("GRANT climbing_control TO climbing_control_login")
+        if importer_password:
+            conn.execute("GRANT climbing_catalog_importer TO climbing_importer_login")
     subprocess.run(["alembic", "upgrade", "head"], check=True)
     with psycopg.connect(host=cfg.db_host, port=cfg.db_port, dbname=cfg.db_name,
                         user=cfg.db_user, password=cfg.db_password.get_secret_value(), autocommit=True) as conn:
         for role in ("climbing_runtime", "climbing_control_login"):
             conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(cfg.db_name), sql.Identifier(role)))
             conn.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(role)))
+        if importer_password:
+            conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO climbing_importer_login").format(sql.Identifier(cfg.db_name)))
+            conn.execute("GRANT USAGE ON SCHEMA public TO climbing_importer_login")
         journal = ("training_sessions", "route_attempts", "training_sections", "training_gear", "gear", "locations", "sections", "routes", "idempotency_keys")
         for table in journal:
             conn.execute(sql.SQL("GRANT SELECT,INSERT,UPDATE,DELETE ON {} TO climbing_runtime,climbing_control_login").format(sql.Identifier(table)))

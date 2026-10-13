@@ -304,6 +304,7 @@ def _attempt_dict(item: RouteAttempt, route: Route | None = None, section: Secti
 
 def _area_dict(item: Location | None) -> dict[str, Any] | None:
     return None if not item else {"id": item.id, "name": item.name, "country": item.country,
+                                  "region": item.region,
                                   "type": item.type, "visibility": item.visibility,
                                   "latitude": float(item.latitude) if item.latitude is not None else None,
                                   "longitude": float(item.longitude) if item.longitude is not None else None}

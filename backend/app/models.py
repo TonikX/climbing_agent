@@ -77,6 +77,7 @@ class Location(Base):
     type: Mapped[str] = mapped_column(String(20))
     name: Mapped[str] = mapped_column(String(200), index=True)
     country: Mapped[str | None] = mapped_column(String(200))
+    region: Mapped[str | None] = mapped_column(String(200))
     city: Mapped[str | None] = mapped_column(String(200))
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
@@ -268,3 +269,4 @@ class ExternalRef(Base):
 
 # Register the queue tables in the same metadata for Alembic and isolated tests.
 from app import public_models as _public_models  # noqa: E402,F401
+from app import import_models as _import_models  # noqa: E402,F401
