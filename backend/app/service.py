@@ -77,6 +77,8 @@ async def list_trainings(
         query = query.where(tuple_(TrainingSession.local_date, TrainingSession.created_at, TrainingSession.id) <
                             tuple_(anchor.local_date, anchor.created_at, anchor.id))
     if not include_test:
+        from app.training_visibility import not_test_only
+        query = query.where(not_test_only())
         query = query.options(
             with_loader_criteria(RouteAttempt, RouteAttempt.is_test.is_(False), include_aliases=True)
         )

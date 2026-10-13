@@ -79,8 +79,9 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
         if len(parts) == 3:
             filters["dateFrom"] = parts[2]
         dto = await TrainingService.current(session, identity) if scope == "current" else await StatisticsService.read(session, filters)
-        keyboard = [[button("📋 Подробнее", "training:details:current" if scope == "current" else "training:details:last")],
-                    [button("← Статистика", "stats:menu")]]
+        keyboard = [[button("← Статистика", "stats:menu")]]
+        if dto.get("active") is not False and not (scope == "last_training" and dto.get("training") is None):
+            keyboard.insert(0, [button("📋 Подробнее", "training:details:current" if scope == "current" else "training:details:last")])
         await reply(session, job, statistics(dto), keyboard)
     elif command.startswith("training:details:"):
         current = command.endswith("current")
@@ -185,7 +186,8 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
         return
     elif command.startswith("test:"):
         if command == "test:menu":
-            await reply(session, job, "Тестовые записи не участвуют в статистике.",
+            await reply(session, job, "Тестовые записи не участвуют в статистике. Режим применяется к новым пролазам.\n"
+                        "Для уже сохранённого пролаза откройте его редактор → «🧪 Тестовая запись» → «Да».",
                         [[button("Включить", "test:on"), button("Выключить", "test:off")]])
         elif command in ("test:on", "test:off"):
             user.test_mode_enabled = command == "test:on"

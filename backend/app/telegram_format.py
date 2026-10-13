@@ -14,7 +14,8 @@ BELAY_NAMES = {"lead": "Нижняя", "top_rope": "Верхняя", "auto_belay
 
 def ascent_card(item, region=None, sector=None):
     snapshot = item.route_snapshot or {}
-    return (f"Регион: {region or 'Не указан'}\nСектор: {sector or 'Не указан'}\n"
+    return (("🧪 Тестовая запись — не учитывается в статистике.\n" if item.is_test else "") +
+            f"Регион: {region or 'Не указан'}\nСектор: {sector or 'Не указан'}\n"
             f"Название трассы: {snapshot.get('name') or 'Не указано'}\nКатегория: {snapshot.get('grade') or 'Не указана'}\n"
             f"Чисто: {'Да' if item.clean_ascent is True else 'Нет'}\n"
             f"Стиль: {STYLE_NAMES.get(item.style, item.style)}\n"

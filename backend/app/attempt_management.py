@@ -186,9 +186,14 @@ async def handle(session, user, job, reply):
     if job.lane == "ai":
         return False
     dialog = await session.get(DialogState, user.id)
-    if command.startswith("trainings:"):
-        cursor=command.removeprefix("trainings:")
+    if command.startswith(("trainings:", "trainings-test:")):
+        include_test = command.startswith("trainings-test:")
+        prefix = "trainings-test:" if include_test else "trainings:"
+        cursor=command.removeprefix(prefix)
         query=select(TrainingSession).where(TrainingSession.user_id==user.id)
+        if not include_test:
+            from app.training_visibility import not_test_only
+            query = query.where(not_test_only())
         if cursor!="0":
             anchor=await session.scalar(select(TrainingSession).where(TrainingSession.user_id==user.id,TrainingSession.id==cursor))
             if not anchor: raise HTTPException(404,"Training not found")
@@ -205,9 +210,12 @@ async def handle(session, user, job, reply):
             time_label=training.started_at.astimezone(ZoneInfo(training.timezone)).strftime(" %H:%M") if training.started_at else ""
             label=f"{training.local_date:%d.%m.%Y}{time_label} · {region.name if region else 'Без района'}"+(" · текущая" if training.status=="active" else "")
             keyboard.append([button(label[:80],"tr:"+training.id)])
-        if len(trainings)>10: keyboard.append([button("Далее","trainings:"+trainings[9].id)])
+        if len(trainings)>10: keyboard.append([button("Далее",prefix+trainings[9].id)])
+        keyboard.append([button("Скрыть тестовые тренировки" if include_test else "🧪 Показать также тестовые тренировки",
+                                "trainings:0" if include_test else "trainings-test:0")])
         keyboard.append([button("← Журнал","journal")])
-        await reply(session,job,"Выберите тренировку." if trainings else "Тренировок пока нет.",keyboard)
+        await reply(session,job,("Выберите тренировку." if trainings else "Тренировок для выбранного фильтра нет.") +
+                    ("\n🧪 Включены тестовые тренировки." if include_test else "\nТренировки только с тестовыми пролазами скрыты."),keyboard)
         return True
     if command.startswith("tr:"):
         training=await session.scalar(select(TrainingSession).where(TrainingSession.user_id==user.id,
@@ -244,7 +252,8 @@ async def handle(session, user, job, reply):
             "version":training.version,"ids":[item.id],"editor_token":editor_token})
         keyboard = [[button(label,"am:field:"+editor_token+":"+field)] for field,label in (
             ("region","Район"),("sector","Сектор"),("name","Название"),("grade","Категория"),("clean_ascent","Чистота"),("reached_top","Дошёл до конца"),
-            ("style","Стиль"),("belay","Страховка"),("falls","Срывы"),("hangs","Зависания"),("notes","Комментарий"))]
+            ("style","Стиль"),("belay","Страховка"),("falls","Срывы"),("hangs","Зависания"),("notes","Комментарий"),
+            ("is_test","🧪 Тестовая запись"))]
         keyboard.append([button("💬 Изменить через LLM","am:ai:"+editor_token)])
         keyboard.append([button("🗑 Удалить попытку","am:askdelete")])
         keyboard.append([button("← Пролазы тренировки","tr:"+training.id)])

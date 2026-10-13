@@ -653,6 +653,8 @@ async def _get_current(session: AsyncSession, p: dict[str, Any]) -> dict[str, An
     training = await _active(session, user.id)
     if not training:
         return {"active": False, "testMode": user.test_mode_enabled}
+    if not p.get("includeTest") and training.attempts and all(a.is_test for a in training.attempts):
+        return {"active": False, "testMode": user.test_mode_enabled}
     area = await session.get(Location, training.primary_location_id) if training.primary_location_id else None
     attempts = [a for a in training.attempts if p.get("includeTest") or not a.is_test]
     response: dict[str, Any] = {
@@ -863,6 +865,9 @@ async def _get_trainings(session: AsyncSession, p: dict[str, Any], *, export_all
         selectinload(TrainingSession.sections), selectinload(TrainingSession.gear))
     user = await _user(session, p.get("user") or {})
     query = query.where(TrainingSession.user_id == user.id)
+    if not p.get("includeTest"):
+        from app.training_visibility import not_test_only
+        query = query.where(not_test_only())
     if p.get("status"): query = query.where(TrainingSession.status == p["status"])
     if p.get("dateFrom"): query = query.where(TrainingSession.local_date >= _date(p["dateFrom"]))
     if p.get("dateTo"): query = query.where(TrainingSession.local_date <= _date(p["dateTo"]))
