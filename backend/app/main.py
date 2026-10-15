@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_session, get_control_session
 from app.idempotency import run_mutation
 from app.schemas import (
-    AttemptCreate, AttemptResponse, FinishTraining,
+    AttemptCreate, AttemptResponse, FinishTraining, ResumeTraining,
     ToolCommand, TrainingCreate, TrainingResponse, TrainingPage, UserResponse, TelegramLogin, ProfileUpdate,
 )
 from app.tool_service import execute_tool, _get_trainings, _gear_dict
@@ -15,7 +15,7 @@ from app.security import current_auth_session, current_user_id, require_internal
 from app.auth import telegram_login, user_payload
 from app.models import AuthSession, ExternalRef, Gear, TrainingSession, User
 from app.service import (
-    append_attempt, finish_training, list_trainings, start_training,
+    append_attempt, finish_training, list_trainings, start_training, resume_training,
 )
 
 app = FastAPI(title="Climbing Journal API", version="1.0.0-beta.1", docs_url="/api/v1/docs", openapi_url="/api/v1/openapi.json")
@@ -183,4 +183,14 @@ async def finish_training_endpoint(
         result = await finish_training(session, user_id, training_id, command)
         return TrainingResponse.model_validate(result).model_dump(mode="json")
     return await run_mutation(session, user_id, f"rest:finish:{training_id}", idempotency_key,
+                              command.model_dump(mode="json"), action)
+
+
+@app.post("/api/v1/trainings/{training_id}/resume", response_model=TrainingResponse)
+async def resume_training_endpoint(training_id: str, command: ResumeTraining, session: Session,
+                                   user_id: CurrentUser, idempotency_key: RequestKey = None) -> dict:
+    async def action():
+        result = await resume_training(session, user_id, training_id, command.expected_version)
+        return TrainingResponse.model_validate(result).model_dump(mode="json")
+    return await run_mutation(session, user_id, f"rest:resume:{training_id}", idempotency_key,
                               command.model_dump(mode="json"), action)

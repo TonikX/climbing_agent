@@ -62,6 +62,33 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
         await reply(session, job, value, keyboard)
     elif user.status != "active":
         await reply(session, job, "Нужен доступ владельца. Подайте заявку через /start.", [[button("Запросить доступ", "access:request")]])
+    elif command == "training:resume" or command.startswith("rs:"):
+        from app.attempt_management import training_for
+        if await _active(session, user.id):
+            await reply(session, job, "Уже есть текущая тренировка. Сначала завершите её.", reply_menu(True))
+        elif command == "training:resume":
+            training = await training_for(session, user.id, "last")
+            if not training:
+                await reply(session, job, "Завершённых тренировок пока нет.", menu(False))
+            else:
+                await reply(session, job, f"Возобновить последнюю тренировку от {training.local_date:%d.%m.%Y}?\n"
+                            "Дата, место и попытки сохранятся. Длительность будет считаться от исходного начала, включая перерыв.",
+                            [[button("↩️ Возобновить", f"rs:{training.id}:{training.version}")],
+                             [button("Отмена", "journal")]])
+        else:
+            parts = command.split(":")
+            if len(parts) != 3 or not parts[2].isdigit():
+                raise HTTPException(422, "Invalid resume callback")
+            try:
+                await TrainingService.resume(session, user.id, parts[1], int(parts[2]))
+            except HTTPException as exc:
+                if exc.status_code not in (404, 409):
+                    raise
+                await reply(session, job, "Тренировка уже изменилась или больше не является последней. Откройте меню заново.", menu(False))
+            else:
+                from app.public_models import DialogState
+                await session.execute(delete(DialogState).where(DialogState.user_id == user.id))
+                await reply(session, job, "Тренировка возобновлена. Можно продолжать записывать пролазы.", reply_menu(True))
     elif await handle_attempt_management(session, user, job, reply):
         pass
     elif await handle_manual_form(session, user, job, reply):

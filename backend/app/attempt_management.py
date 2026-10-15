@@ -389,6 +389,10 @@ async def attempt_list(session, uid, job, training, start, reply):
     keyboard=[[button(("🧪 " if x.is_test else "")+f"№{x.sequence} · {(x.route_snapshot or {}).get('name')}"[:60],"am:pick:"+x.id)] for x in values[start:start+15]]
     if start+15<len(values): keyboard.append([button("Далее",f"attempts:{training.id}:{start+15}")])
     if start: keyboard.append([button("Назад",f"attempts:{training.id}:{max(0,start-15)}")])
+    if training.status == "completed" and not await training_for(session, uid, "current"):
+        latest = await training_for(session, uid, "last")
+        if latest and latest.id == training.id:
+            keyboard.append([button("↩️ Возобновить тренировку", "training:resume")])
     keyboard.extend([[button("🗑 Выбрать несколько для удаления","am:select")],
                      [button("← Выбрать другую тренировку","trainings:0")]])
     await reply(session,job,overview+"\n\nВыберите пролаз для изменения или опишите изменения через LLM.",keyboard)

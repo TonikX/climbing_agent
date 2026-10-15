@@ -139,3 +139,31 @@ async def finish_training(
         training.notes = command.notes
     await session.flush()
     return training
+
+
+async def resume_training(session: AsyncSession, user_id: str, training_id: str,
+                          expected_version: int) -> TrainingSession:
+    # All entry points share the user lock with start/finish and Telegram jobs.
+    await session.scalar(select(User).where(User.id == user_id).with_for_update())
+    training = await session.scalar(select(TrainingSession).options(selectinload(TrainingSession.attempts)).where(
+        TrainingSession.user_id == user_id, TrainingSession.id == training_id).with_for_update())
+    if not training:
+        raise HTTPException(404, "Training not found")
+    if training.version != expected_version:
+        raise HTTPException(409, "Training changed; refresh before resuming")
+    active = await session.scalar(select(TrainingSession.id).where(
+        TrainingSession.user_id == user_id, TrainingSession.status == "active"))
+    if active:
+        raise HTTPException(409, "Finish the current training before resuming another")
+    latest = await session.scalar(select(TrainingSession.id).where(
+        TrainingSession.user_id == user_id, TrainingSession.status == "completed").order_by(
+            TrainingSession.local_date.desc(), TrainingSession.created_at.desc(), TrainingSession.id.desc()).limit(1))
+    if latest != training.id or training.status != "completed":
+        raise HTTPException(409, "Only the last completed training can be resumed")
+    training.status = "active"
+    training.completed_at = None
+    # Recompute elapsed duration from the original start, including the pause.
+    training.duration_minutes = None
+    training.version += 1
+    await session.flush()
+    return training

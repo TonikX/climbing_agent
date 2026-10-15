@@ -24,6 +24,7 @@ def ascent_card(item, region=None, sector=None):
 
 def menu(active: bool = False) -> list:
     return [[button("🧗 Текущая тренировка" if active else "Начать тренировку", "training:details:current" if active else "training:start")],
+            *([] if active else [[button("↩️ Возобновить последнюю тренировку", "training:resume")]]),
             [button("✏️ Тренировки и пролазы", "trainings:0")],
             [button("📊 Статистика", "stats:menu")],
             [button("👤 Профиль", "profile"), button("🧪 Тестовый режим", "test:menu")]]

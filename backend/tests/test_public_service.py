@@ -96,6 +96,49 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.send("2", "am:delete:"+data["confirmation"], True)
         await self.process()
 
+    async def test_resume_last_training_ui_and_rest_guards(self):
+        headers = await self.login("2")
+        other = await self.login("3")
+        created = await self.client.post("/api/v1/trainings", headers=headers, json={"date":"2026-10-15", "notes":"keep"})
+        tid = created.json()["id"]
+        added = await self.client.post(f"/api/v1/trainings/{tid}/attempts", headers=headers,
+            json={"name":"Resume route", "grade":"6A", "reached_top":False})
+        self.assertEqual(added.status_code, 201, added.text)
+        finished = await self.client.post(f"/api/v1/trainings/{tid}/finish", headers=headers, json={"duration_minutes":30})
+        version = finished.json()["version"]
+        foreign = await self.client.post(f"/api/v1/trainings/{tid}/resume", headers=other, json={"expected_version":version})
+        self.assertEqual(foreign.status_code, 404)
+        stale = await self.client.post(f"/api/v1/trainings/{tid}/resume", headers=headers, json={"expected_version":version-1})
+        self.assertEqual(stale.status_code, 409)
+        await self.send("2", "↩️ Возобновить последнюю тренировку")
+        await self.process()
+        prompt = await self.conn.scalar(select(Outbox.payload).where(Outbox.dedupe_key.like("job:%")).order_by(Outbox.sequence.desc()).limit(1))
+        self.assertIn("15.10.2026", prompt["text"])
+        self.assertEqual(await self.conn.scalar(select(TrainingSession.status).where(TrainingSession.id==tid)), "completed")
+        await self.send("2", f"rs:{tid}:{version}", True)
+        await self.process()
+        row = (await self.conn.execute(select(TrainingSession.status, TrainingSession.version,
+            TrainingSession.completed_at, TrainingSession.duration_minutes, TrainingSession.notes).where(TrainingSession.id==tid))).one()
+        self.assertEqual(tuple(row), ("active", version+1, None, None, "keep"))
+        self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),1)
+        await self.send("2", f"rs:{tid}:{version}", True)
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(TrainingSession.version).where(TrainingSession.id==tid)),version+1)
+        self.assertEqual((await self.client.post("/api/v1/trainings", headers=headers, json={"date":"2026-10-15"})).status_code,409)
+        finished = await self.client.post(f"/api/v1/trainings/{tid}/finish", headers=headers,json={})
+        version = finished.json()["version"]
+        newer = await self.client.post("/api/v1/trainings", headers=headers, json={"date":"2026-10-16"})
+        self.assertEqual((await self.client.post(f"/api/v1/trainings/{tid}/resume", headers=headers,json={"expected_version":version})).status_code,409)
+        await self.client.post(f"/api/v1/trainings/{newer.json()['id']}/finish", headers=headers,json={})
+        self.assertEqual((await self.client.post(f"/api/v1/trainings/{tid}/resume", headers=headers,json={"expected_version":version})).status_code,409)
+        new_tid = newer.json()["id"]
+        new_version = await self.conn.scalar(select(TrainingSession.version).where(TrainingSession.id==new_tid))
+        replay_headers={**headers,"Idempotency-Key":"resume-once"}
+        for _ in range(2):
+            resumed = await self.client.post(f"/api/v1/trainings/{new_tid}/resume", headers=replay_headers,json={"expected_version":new_version})
+            self.assertEqual(resumed.status_code,200,resumed.text)
+            self.assertEqual(resumed.json()["version"],new_version+1)
+
     async def test_first_attempt_draft_voice_clarification_and_current_screen(self):
         from app.models import Location, Section
         from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup

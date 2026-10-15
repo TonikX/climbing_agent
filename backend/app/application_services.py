@@ -6,6 +6,7 @@ class TrainingService:
     start = staticmethod(service.start_training)
     append = staticmethod(service.append_attempt)
     finish = staticmethod(service.finish_training)
+    resume = staticmethod(service.resume_training)
     list = staticmethod(service.list_trainings)
     current = staticmethod(tool_service._get_current)
 

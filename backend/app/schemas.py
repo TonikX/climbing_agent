@@ -86,6 +86,11 @@ class FinishTraining(BaseModel):
     notes: str | None = None
 
 
+class ResumeTraining(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
+
+
 class AttemptResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
