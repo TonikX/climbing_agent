@@ -1,6 +1,6 @@
 """One bounded PostgreSQL search for public and owned catalogue entries."""
 from fastapi import HTTPException
-from sqlalchemy import select, func, or_, and_, exists, literal
+from sqlalchemy import select, func, or_, and_, exists, literal, text
 
 from app.models import CatalogAlias, Location, Section, Route
 
@@ -33,6 +33,9 @@ async def target(session, uid, kind, item_id):
 async def search(session, uid, kind, query="", parent_id=None, offset=0, limit=8):
     if kind not in KINDS or len(query) > 200 or offset < 0 or offset > 10000 or not 1 <= limit <= 100:
         raise HTTPException(422, "Invalid catalogue search")
+    # Nested RLS policies inflate the estimate: JIT compilation cost 14 s for a 40 ms query.
+    # SET LOCAL affects only this transaction, never the shared server configuration.
+    await session.execute(text("SET LOCAL jit=off"))
     model, alias_field = KINDS[kind]
     name = func.catalog_normalize(model.name)
     q = await session.scalar(select(func.catalog_normalize(query)))

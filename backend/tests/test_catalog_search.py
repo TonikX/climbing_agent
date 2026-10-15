@@ -1,6 +1,6 @@
 """Real PostgreSQL search and deterministic Telegram catalogue resolution."""
 import unittest
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import test_public_service as journal_tests
@@ -53,6 +53,7 @@ class CatalogSearchTest(unittest.IsolatedAsyncioTestCase):
                 ("sections","Kebap",self.area.id,self.sector.id),("routes","Engesh",self.sector.id,self.route.id)):
                 result=await search(session,self.uid,kind,name,parent)
                 self.assertEqual(result["items"][0]["id"],expected)
+                self.assertEqual(await session.scalar(text("SHOW jit")),"off")
 
     async def test_search_alias_privacy_typo_parent_and_exact_shared_reuse(self):
         await self.seed()
