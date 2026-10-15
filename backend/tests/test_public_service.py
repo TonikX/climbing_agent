@@ -89,12 +89,31 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
             payload["intent"] = intent.model_dump(mode="json")
         complete = await self.client.post(f"/api/v1/internal/jobs/{lane}/{item['id']}/complete", json=payload, headers=headers)
         self.assertEqual(complete.status_code, 200, complete.text)
+        # Existing journal scenarios explicitly approve new catalogue entries.
+        # Catalogue-specific tests disable this helper and inspect every choice.
+        if getattr(self, "approve_new_catalog", True):
+            draft = await self.conn.scalar(select(DialogState.data).where(DialogState.state=="catalog_choice"))
+            selection = (draft or {}).get("selection", {})
+            if selection.get("query") and selection.get("field") != "grade":
+                await self.send(item["payload"]["telegram_id"], "cn:"+selection["token"], True)
+                await self.process()
+            elif selection.get("field") == "grade":
+                await self.send(item["payload"]["telegram_id"], "cg:"+selection["token"]+":user", True)
+                await self.process()
         return item
 
     async def confirm_attempt_deletion(self):
         data=await self.conn.scalar(select(DialogState.data).where(DialogState.state=="attempt_delete"))
         await self.send("2", "am:delete:"+data["confirmation"], True)
         await self.process()
+
+    async def start_at_test_location(self, headers):
+        area = (await self.client.post("/api/v1/catalog/locations", headers=headers, json={"name":"Test region"})).json()
+        sector = (await self.client.post("/api/v1/catalog/sections", headers=headers,
+            json={"location_id":area["id"],"name":"Test sector"})).json()
+        result = await self.client.post("/api/v1/trainings", headers=headers,
+            json={"date":"2026-10-15","location_id":area["id"],"section_id":sector["id"]})
+        self.assertEqual(result.status_code,201,result.text)
 
     async def test_resume_last_training_ui_and_rest_guards(self):
         headers = await self.login("2")
@@ -313,7 +332,8 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_upper_style_manual_ai_editor_and_statistics_keep_cleanliness_independent(self):
         headers = await self.login("2")
-        for value, callback in (("training:start", True), ("attempt:form", True), ("Верхняя трасса", False), ("6B", False),
+        await self.start_at_test_location(headers)
+        for value, callback in (("attempt:form", True), ("Верхняя трасса", False), ("6B", False),
             ("form:top_rope", True), ("form:yes", True), ("form:top_rope", True), ("form:yes", True), ("0", False), ("1", False)):
             await self.send("2", value, callback)
             await self.process()
@@ -558,7 +578,8 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_manual_form_without_ai_and_deletion_cancels_old_work(self):
         a, b = await self.login("2"), await self.login("3")
-        for text, callback in (("training:start", True), ("attempt:form", True), ("Трасса", False), ("6B", False),
+        await self.start_at_test_location(a)
+        for text, callback in (("attempt:form", True), ("Трасса", False), ("6B", False),
             ("form:top_rope", True), ("form:yes", True), ("form:flash", True), ("form:yes", True), ("0", False), ("1", False)):
             await self.send("2", text, callback)
             await self.process()

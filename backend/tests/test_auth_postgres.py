@@ -27,6 +27,9 @@ class AuthPostgresTest(unittest.IsolatedAsyncioTestCase):
         await self.conn.execute(text(f'CREATE SCHEMA "{schema}"'))
         await self.conn.execute(text(f'SET LOCAL search_path TO "{schema}"'))
         await self.conn.run_sync(Base.metadata.create_all)
+        from app.catalog_search import NORMALIZE_SQL
+        await self.conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public"))
+        await self.conn.execute(text(NORMALIZE_SQL))
         async def session_override():
             async with AsyncSession(bind=self.conn, expire_on_commit=False,
                                     join_transaction_mode="create_savepoint") as session:

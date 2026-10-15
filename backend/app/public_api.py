@@ -136,6 +136,47 @@ async def catalog_get(kind: Literal["locations", "sections", "routes"], item_id:
     return formatter(item)
 
 
+class CatalogSearchItem(BaseModel):
+    id: str
+    name: str
+    grade: str | None
+    parent_id: str | None
+    location: str
+    country: str | None
+    type: str | None
+    visibility: str | None
+    match: Literal["exact", "similar"]
+    score: float
+
+
+class CatalogSearchPage(BaseModel):
+    items: list[CatalogSearchItem]
+    next_offset: int | None
+
+
+@router.get("/catalog-search/{kind}", response_model=CatalogSearchPage)
+async def catalog_search_endpoint(kind: Literal["locations", "sections", "routes"], session: Session, uid: UserId,
+    q: str = Query("", max_length=200), parent_id: str | None = None,
+    offset: int = Query(0, ge=0, le=10000), limit: int = Query(20, ge=1, le=100)):
+    from app.catalog_search import search
+    return await search(session, uid, kind, q, parent_id, offset, limit)
+
+
+class AliasWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/catalog-aliases/{kind}/{item_id}")
+async def catalog_alias_write(kind: Literal["locations", "sections", "routes"], item_id: str,
+    command: AliasWrite, session: Session, uid: UserId):
+    from app.catalog_search import remember
+    async def action():
+        await remember(session, uid, kind, item_id, command.name)
+        return {"saved": True}
+    return await run_mutation(session, uid, "catalog:alias", None, command.model_dump(), action)
+
+
 @router.patch("/catalog/{kind}/{item_id}")
 async def catalog_patch(kind: Literal["locations", "sections", "routes"], item_id: str, command: CatalogPatch, session: Session, uid: UserId):
     await session.scalar(select(User).where(User.id == uid).with_for_update())

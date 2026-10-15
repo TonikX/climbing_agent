@@ -123,11 +123,15 @@ async def _area(session: AsyncSession, raw: dict[str, Any] | None) -> Location |
     item = await session.get(Location, str(raw["id"])) if raw.get("id") else None
     item = item or await _by_ref(session, "location", raw.get("externalRefs"))
     if not item and raw.get("name"):
-        item = await session.scalar(select(Location).where(
-            Location.owner_id == session.info.get("user_id"), Location.visibility == "private",
-            Location.type == raw.get("type", "outdoor"),
-            func.lower(Location.name) == _norm(raw["name"]),
-            func.lower(func.coalesce(Location.country, "")) == _norm(raw.get("country"))))
+        from app.catalog_search import search
+        matches = [x for x in (await search(session, session.info.get("user_id"), "locations", str(raw["name"])))['items'] if x['match']=='exact']
+        if raw.get("country"):
+            matches = [x for x in matches if _norm(x['country']) == _norm(raw['country'])]
+        if raw.get("type"):
+            matches = [x for x in matches if x['type'] == raw['type']]
+        if len(matches) > 1:
+            raise _bad("Several areas match; select an area ID", 409)
+        item = await session.get(Location, matches[0]['id']) if matches else None
     if raw.get("id") and not item:
         raise _bad("Area not found", 404)
     await _visible(session, item)
@@ -156,8 +160,11 @@ async def _section(session: AsyncSession, area: Location | None, raw: dict[str, 
         raise _bad("Sector not found", 404)
     await _visible(session, item)
     if not item and raw.get("name") and area:
-        item = await session.scalar(select(Section).where(
-            Section.location_id == area.id, func.lower(Section.name) == _norm(raw["name"])))
+        from app.catalog_search import search
+        matches = [x for x in (await search(session, session.info.get("user_id"), "sections", str(raw["name"]), area.id))['items'] if x['match']=='exact']
+        if len(matches) > 1:
+            raise _bad("Several sectors match; select a sector ID", 409)
+        item = await session.get(Section, matches[0]['id']) if matches else None
     if item and area and item.location_id != area.id:
         raise _bad("Sector does not belong to the selected area")
     if not item:
@@ -178,12 +185,15 @@ async def _route(session: AsyncSession, section: Section | None, raw: dict[str, 
     item = item or await _by_ref(session, "route", raw.get("externalRefs"))
     await _visible(session, item)
     if not item and raw.get("name") and section:
-        await _writable(session, section)
-        item = await session.scalar(select(Route).where(
-            Route.section_id == section.id, func.lower(Route.name) == _norm(raw["name"])))
+        from app.catalog_search import search
+        matches = [x for x in (await search(session, session.info.get("user_id"), "routes", str(raw["name"]), section.id))['items'] if x['match']=='exact']
+        if len(matches) > 1:
+            raise _bad("Several routes match; select a route ID", 409)
+        item = await session.get(Route, matches[0]['id']) if matches else None
     if item and section and item.section_id != section.id:
         raise _bad("Route does not belong to the selected sector")
     if not item and raw.get("name") and section:
+        await _writable(session, section)
         item = Route(section_id=section.id, name=str(raw["name"]), grade=raw.get("grade"))
         session.add(item)
         await session.flush()

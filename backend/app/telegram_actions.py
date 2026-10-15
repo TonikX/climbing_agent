@@ -21,6 +21,7 @@ from app.application_services import StatisticsService, TrainingService
 from app.manual_form import handle as handle_manual_form
 from app.attempt_management import handle as handle_attempt_management, apply_intent, dialog_set
 from app.attempt_capture import save_or_ask, place
+from app.catalog_capture import handle as handle_catalog
 
 
 async def reply(session, job: Job, value: str, keyboard=None, suffix="", document=None, access_request_id=None):
@@ -62,6 +63,8 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
         await reply(session, job, value, keyboard)
     elif user.status != "active":
         await reply(session, job, "Нужен доступ владельца. Подайте заявку через /start.", [[button("Запросить доступ", "access:request")]])
+    elif await handle_catalog(session, user, job, reply):
+        pass
     elif command == "training:resume" or command.startswith("rs:"):
         from app.attempt_management import training_for
         if await _active(session, user.id):
@@ -130,6 +133,7 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
                 if len(records) > 15:
                     keyboard.append([button("Другие попытки", "attempts:current:0")])
                 keyboard.extend([[button("💬 Записать пролаз", "attempt:ai")],
+                    [button("📚 Выбрать трассу из БД", "catalog:choose")],
                     [button("📍 Место тренировки", "training:location")],
                     [button("Завершить тренировку", "training:finish")], [button("← Главное меню", "journal")]])
                 chunks = attempts(dto)

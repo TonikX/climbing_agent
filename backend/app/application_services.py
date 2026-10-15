@@ -1,5 +1,5 @@
 """Public service boundaries reuse the journal's existing domain implementation."""
-from app import auth, jobs, service, tool_service
+from app import auth, jobs, service, tool_service, catalog_search
 
 
 class TrainingService:
@@ -16,6 +16,7 @@ class StatisticsService:
 
 
 class CatalogService:
+    search = staticmethod(catalog_search.search)
     location = staticmethod(tool_service._area)
     section = staticmethod(tool_service._section)
     route = staticmethod(tool_service._route)

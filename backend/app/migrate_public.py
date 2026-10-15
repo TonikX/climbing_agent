@@ -43,7 +43,7 @@ def main():
         if importer_password:
             conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO climbing_importer_login").format(sql.Identifier(cfg.db_name)))
             conn.execute("GRANT USAGE ON SCHEMA public TO climbing_importer_login")
-        journal = ("training_sessions", "route_attempts", "training_sections", "training_gear", "gear", "locations", "sections", "routes", "idempotency_keys")
+        journal = ("training_sessions", "route_attempts", "training_sections", "training_gear", "gear", "locations", "sections", "routes", "idempotency_keys", "catalog_aliases")
         for table in journal:
             conn.execute(sql.SQL("GRANT SELECT,INSERT,UPDATE,DELETE ON {} TO climbing_runtime,climbing_control_login").format(sql.Identifier(table)))
         conn.execute("GRANT SELECT ON users,external_refs TO climbing_runtime")

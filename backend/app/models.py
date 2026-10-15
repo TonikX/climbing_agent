@@ -127,6 +127,17 @@ class Route(Base):
     external_refs: Mapped[list["ExternalRef"]] = relationship(back_populates="route", cascade="all, delete-orphan")
 
 
+class CatalogAlias(Base):
+    __tablename__ = "catalog_aliases"
+    __table_args__ = (CheckConstraint("num_nonnulls(location_id, section_id, route_id) = 1", name="ck_alias_target"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: new_id("alias"))
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    location_id: Mapped[str | None] = mapped_column(ForeignKey("locations.id", ondelete="CASCADE"), index=True)
+    section_id: Mapped[str | None] = mapped_column(ForeignKey("sections.id", ondelete="CASCADE"), index=True)
+    route_id: Mapped[str | None] = mapped_column(ForeignKey("routes.id", ondelete="CASCADE"), index=True)
+
+
 class Gear(Base):
     __tablename__ = "gear"
     __table_args__ = (CheckConstraint(

@@ -24,8 +24,9 @@ async def handle(session, user, job, reply) -> bool:
             await reply(session, job,
                 "Опишите пролаз одним сообщением или отправьте голосовое. AI разберёт запись и сохранит её в текущей тренировке.\n"
                 "Например: «Гейкбаири, сектор Кебап, Engesh 6a, с зависанием, нижняя страховка».\n"
-                "Бот спросит недостающие данные перед сохранением. /cancel — отменить черновик.",
-                [[button("✍️ Заполнить вручную", "attempt:form")], [button("← Журнал", "journal")]])
+                "Бот проверит названия по БД и спросит недостающие данные перед сохранением. /cancel — отменить черновик.",
+                [[button("📚 Выбрать трассу из БД", "catalog:choose")],
+                 [button("✍️ Заполнить вручную", "attempt:form")], [button("← Журнал", "journal")]])
         return True
     if command in ("profile:timezone", "profile:name", "gear:form"):
         if dialog:
@@ -194,14 +195,18 @@ async def handle(session, user, job, reply) -> bool:
         data["hangs"] = int(command)
         if not data["reachedTop"]:
             data["cleanAscent"] = False
-        payload = {k: v for k, v in data.items() if k != "training_id"}
-        result = await execute_tool(session, "append_climbing_attempt", {"user": {"id": user.id}, "date": active.local_date.isoformat(), "attempt": payload}, job.id)
-        await session.delete(dialog)
-        from app.attempt_management import card
-        from app.models import RouteAttempt
-        saved = await session.get(RouteAttempt, result["attemptId"])
-        await reply(session, job, "Сохранено.\n"+await card(session, saved),
-            [[button("✏️ Изменить", "am:pick:"+saved.id)], *menu(True)])
+        from app.attempt_capture import complete_facts, place
+        facts = {k:v for k,v in data.items() if k not in ("training_id", "form")}
+        for old, new in (("reachedTop", "reached_top"), ("cleanAscent", "clean_ascent")):
+            if old in facts:
+                facts[new] = facts.pop(old)
+        defaults = await place(session, active)
+        for key in ("region", "sector"):
+            if not facts.get(key) and defaults.get(key):
+                facts[key] = defaults[key]
+        facts["manual"] = True
+        facts["is_test"] = user.test_mode_enabled
+        await complete_facts(session, user, job, active, facts, reply)
         return True
     dialog.data = data
     return True

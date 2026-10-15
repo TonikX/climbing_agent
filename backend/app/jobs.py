@@ -50,7 +50,8 @@ async def ingest(session, raw: dict) -> dict:
     voice = msg.voice if not envelope.callback_query else None
     lane = "fast" if menu_command or envelope.callback_query or command.startswith("/") or user.status != "active" else "ai"
     dialog = await session.get(DialogState, user.id)
-    if dialog and (dialog.data.get("form") not in ("attempt_manage", "attempt_capture") or dialog.state == "attempt_value"):
+    if dialog and (dialog.data.get("form") not in ("attempt_manage", "attempt_capture") or dialog.state == "attempt_value" or
+                   (dialog.state == "catalog_choice" and not voice)):
         lane = "fast"
     if not command and not voice:
         lane, command = "fast", "unsupported"

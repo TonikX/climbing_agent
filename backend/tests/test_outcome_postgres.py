@@ -78,6 +78,9 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
         schema = "outcome_test_" + uuid4().hex
         await self.conn.execute(text(f'CREATE SCHEMA "{schema}"'))
         await self.conn.execute(text(f'SET LOCAL search_path TO "{schema}"'))
+        from app.catalog_search import NORMALIZE_SQL
+        await self.conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public"))
+        await self.conn.execute(text(NORMALIZE_SQL))
 
     async def asyncTearDown(self):
         await self.tx.rollback()

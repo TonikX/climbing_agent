@@ -53,16 +53,23 @@ class RowSecurityTest(unittest.IsolatedAsyncioTestCase):
                         await migrate(path)
                 self.assertEqual(before, list((await conn.execute(text("SELECT id,route_snapshot FROM route_attempts ORDER BY id"))).all()))
                 self.assertEqual(await conn.scalar(text("SELECT status FROM users WHERE id='b'")), "pending_approval")
+                await conn.execute(text("INSERT INTO catalog_aliases(id,owner_id,name,location_id) VALUES ('alias-a','a','My area','loc')"))
                 await conn.execute(text(f'CREATE ROLE "{role}" NOLOGIN NOSUPERUSER NOBYPASSRLS'))
                 await conn.execute(text(f'GRANT USAGE ON SCHEMA "{schema}" TO "{role}"'))
                 await conn.execute(text(f'GRANT SELECT ON ALL TABLES IN SCHEMA "{schema}" TO "{role}"'))
-                await conn.execute(text(f'GRANT INSERT,UPDATE,DELETE ON training_sessions,route_attempts,gear,locations,sections,routes,training_gear,training_sections,idempotency_keys TO "{role}"'))
+                await conn.execute(text(f'GRANT INSERT,UPDATE,DELETE ON training_sessions,route_attempts,gear,locations,sections,routes,training_gear,training_sections,idempotency_keys,catalog_aliases TO "{role}"'))
                 await conn.execute(text(f'GRANT UPDATE(name,timezone,test_mode_enabled) ON users TO "{role}"'))
                 await conn.execute(text(f'SET LOCAL ROLE "{role}"'))
                 self.assertEqual(await conn.scalar(text("SELECT count(*) FROM training_sessions")), 0)
+                self.assertEqual(await conn.scalar(text("SELECT count(*) FROM catalog_aliases")), 0)
                 await conn.execute(text("SELECT set_config('app.user_id','a',true)"))
                 self.assertEqual(list((await conn.execute(text("SELECT id FROM route_attempts"))).scalars()), ["aa"])
                 self.assertEqual(await conn.scalar(text("SELECT count(*) FROM locations")), 1)
+                self.assertEqual(await conn.scalar(text("SELECT name FROM catalog_aliases")), "My area")
+                async with conn.begin_nested() as savepoint:
+                    with self.assertRaises(DBAPIError):
+                        await conn.execute(text("INSERT INTO catalog_aliases(id,owner_id,name,location_id) VALUES ('attack-alias','b','Bad alias','loc')"))
+                    await savepoint.rollback()
                 self.assertEqual(await conn.scalar(text("SELECT count(*) FROM jobs")), 0)
                 async with conn.begin_nested() as savepoint:
                     with self.assertRaises(DBAPIError):
@@ -71,6 +78,7 @@ class RowSecurityTest(unittest.IsolatedAsyncioTestCase):
                     await savepoint.rollback()
                 await conn.execute(text("SELECT set_config('app.user_id','b',true)"))
                 self.assertEqual(await conn.scalar(text("SELECT count(*) FROM route_attempts")), 0)
+                self.assertEqual(await conn.scalar(text("SELECT count(*) FROM catalog_aliases")), 0)
                 async with conn.begin_nested() as savepoint:
                     with self.assertRaises(DBAPIError):
                         await conn.execute(text("UPDATE users SET status='active' WHERE id='b'"))

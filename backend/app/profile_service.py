@@ -5,7 +5,7 @@ from sqlalchemy import delete, select
 
 from app.config import get_settings
 from app.db import set_user_context
-from app.models import ExternalRef, Gear, Location, Route, Section, TrainingSession, User
+from app.models import CatalogAlias, ExternalRef, Gear, Location, Route, Section, TrainingSession, User
 from app.public_models import DeletionRecord, TelegramUpdate, Usage
 from app.tool_service import _get_trainings, _gear_dict
 
@@ -20,8 +20,10 @@ class ProfileService:
         locations = list((await session.scalars(select(Location).where(Location.owner_id == uid))).all())
         sections = list((await session.scalars(select(Section).where(Section.location_id.in_([x.id for x in locations])))).all())
         routes = list((await session.scalars(select(Route).where(Route.section_id.in_([x.id for x in sections])))).all())
+        aliases = list((await session.scalars(select(CatalogAlias).where(CatalogAlias.owner_id == uid))).all())
         updates = list((await session.scalars(select(TelegramUpdate).where(TelegramUpdate.user_id == uid))).all())
-        return {"profile": {"id": uid, "name": user.name, "timezone": user.timezone, "testMode": user.test_mode_enabled},
+        return {"catalogAliases": [{"name": x.name, "locationId": x.location_id, "sectionId": x.section_id, "routeId": x.route_id} for x in aliases],
+                "profile": {"id": uid, "name": user.name, "timezone": user.timezone, "testMode": user.test_mode_enabled},
                 "trainings": history["trainings"], "gear": [_gear_dict(x) for x in gear],
                 "catalog": {"locations": [{"id": x.id, "name": x.name, "country": x.country} for x in locations],
                             "sections": [{"id": x.id, "locationId": x.location_id, "name": x.name} for x in sections],
