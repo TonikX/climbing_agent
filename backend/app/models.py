@@ -99,6 +99,8 @@ class Section(Base):
     location_id: Mapped[str] = mapped_column(ForeignKey("locations.id", ondelete="CASCADE"), index=True)
     type: Mapped[str] = mapped_column(String(20))
     name: Mapped[str] = mapped_column(String(200))
+    name_en: Mapped[str | None] = mapped_column(String(200))
+    name_native: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), onupdate=text("now()")
@@ -113,6 +115,8 @@ class Route(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: new_id("route"))
     section_id: Mapped[str] = mapped_column(ForeignKey("sections.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(200), index=True)
+    name_en: Mapped[str | None] = mapped_column(String(200))
+    name_native: Mapped[str | None] = mapped_column(String(200))
     grade: Mapped[str | None] = mapped_column(String(30), index=True)
     color: Mapped[str | None] = mapped_column(String(50))
     route_number: Mapped[str | None] = mapped_column(String(50))

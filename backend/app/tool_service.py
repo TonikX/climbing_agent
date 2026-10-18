@@ -173,7 +173,8 @@ async def _section(session: AsyncSession, area: Location | None, raw: dict[str, 
         if not area:
             raise _bad("An area is required to create a sector")
         await _writable(session, area)
-        item = Section(location_id=area.id, type="wall" if area.type == "gym" else "sector", name=str(raw["name"]))
+        item = Section(location_id=area.id, type="wall" if area.type == "gym" else "sector", name=str(raw["name"]),
+                       name_en=raw.get("name_en"), name_native=raw.get("name_native"))
         session.add(item)
         await session.flush()
     await _add_refs(session, "section", item, raw.get("externalRefs"))
@@ -194,7 +195,8 @@ async def _route(session: AsyncSession, section: Section | None, raw: dict[str, 
         raise _bad("Route does not belong to the selected sector")
     if not item and raw.get("name") and section:
         await _writable(session, section)
-        item = Route(section_id=section.id, name=str(raw["name"]), grade=raw.get("grade"))
+        item = Route(section_id=section.id, name=str(raw["name"]), grade=raw.get("grade"),
+                     name_en=raw.get("name_en"), name_native=raw.get("name_native"))
         session.add(item)
         await session.flush()
     if item:
@@ -321,12 +323,13 @@ def _area_dict(item: Location | None) -> dict[str, Any] | None:
 
 
 def _section_dict(item: Section | None) -> dict[str, Any] | None:
-    return None if not item else {"id": item.id, "areaId": item.location_id, "name": item.name}
+    return None if not item else {"id": item.id, "areaId": item.location_id, "name": item.name,
+                                  "name_en": item.name_en, "name_native": item.name_native}
 
 
 def _route_dict(item: Route | None) -> dict[str, Any] | None:
     return None if not item else {"id": item.id, "sectorId": item.section_id, "name": item.name,
-                                  "grade": item.grade}
+                                  "grade": item.grade, "name_en": item.name_en, "name_native": item.name_native}
 
 
 def _gear_dict(item: Gear) -> dict[str, Any]:
@@ -522,10 +525,18 @@ async def _delete_attempt(session: AsyncSession, p: dict[str, Any]) -> dict[str,
     return {"success": True, "deletedAttemptId": attempt_id, "currentRouteAttempts": remaining}
 
 
+def _grade_key(value: str | None) -> str:
+    value = re.sub(r"\s+", "", (value or "").upper()).translate(str.maketrans("АВС", "ABC"))
+    parts = value.split("/")
+    if all(re.fullmatch(r"\d+[ABC]?\+?", part) for part in parts):
+        return "/".join(sorted(set(parts), key=lambda part: (int(re.match(r"\d+", part)[0]), part)))
+    return value
+
+
 def _grade_rank(value: str | None) -> tuple[int, int, int, int]:
     if not value:
         return (-1, -1, -1, 0)
-    grades = re.findall(r"(\d+)([ABC]?)(\+?)", value.strip().upper())
+    grades = re.findall(r"(\d+)([ABC]?)(\+?)", _grade_key(value))
     ranks = {(int(number), "ABC".find(letter) if letter else -1, int(bool(plus)))
              for number, letter, plus in grades}
     # A split grade lies below its upper boundary, above its lower boundary.
@@ -536,8 +547,8 @@ def _historical_grade(attempt: RouteAttempt) -> str | None:
     # An explicitly unknown historical grade must not change after catalogue edits.
     snapshot = attempt.route_snapshot or {}
     if "grade" in snapshot:
-        return snapshot["grade"]
-    return attempt.route.grade if attempt.route else None
+        return _grade_key(snapshot["grade"]) or None
+    return (_grade_key(attempt.route.grade) or None) if attempt.route else None
 
 
 def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
@@ -548,9 +559,9 @@ def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
     projects = sessions - completed
     grades = [_historical_grade(a) for a in attempts]
     max_grade = max((grade for grade in grades if grade), key=_grade_rank, default=None)
-    def session_max(keys):
+    def outcome_max(field):
         return max((grade for a, grade in zip(attempts, grades)
-                    if grade and (a.route_session_key or a.id) in keys), key=_grade_rank, default=None)
+                    if grade and getattr(a, field) is True), key=_grade_rank, default=None)
     attempts_count = sum(a.attempts for a in attempts)
     # Count each completed route once, using its first successful ascent.
     sends: dict[str, RouteAttempt] = {}
@@ -583,8 +594,8 @@ def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
         "unknownBelayAttemptsCount": sum(a.attempts for a in attempts if a.belay == "unknown"),
         "maxGrade": max_grade,
         "maxAttemptedGrade": max_grade,
-        "maxReachedTopGrade": session_max(reached),
-        "maxCompletedGrade": session_max(completed),
+        "maxReachedTopGrade": outcome_max("reached_top"),
+        "maxCompletedGrade": outcome_max("clean_ascent"),
     }
 
 
@@ -700,11 +711,11 @@ async def _statistics_rows(session: AsyncSession, user_id: str, start: date | No
 
 
 def _filter_statistics_rows(rows, p: dict[str, Any]):
-    route_name, grade = _norm(p.get("route")), _norm(p.get("grade"))
+    route_name, grade = _norm(p.get("route")), _grade_key(p.get("grade"))
     def matches(attempt):
         snapshot = attempt.route_snapshot or {}
         name = _norm(snapshot.get("name", attempt.route.name if attempt.route else None))
-        category = _norm(snapshot.get("grade", attempt.route.grade if attempt.route else None))
+        category = _historical_grade(attempt)
         return (not p.get("routeId") or attempt.route_id == p["routeId"]) and \
                (not route_name or route_name in name) and (not grade or grade == category)
     return [(training, attempt) for training, attempt in rows if matches(attempt)]

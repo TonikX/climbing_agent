@@ -29,12 +29,15 @@ async def choose(session, user, job, training, facts, field, kind, query, parent
         "token": job.id, "facts": facts, "selection": selection})
     keyboard = []
     for i, item in enumerate(result["items"]):
+        names = list(dict.fromkeys(x for x in (item.get("name_en"), item.get("name_native"), item["name"]) if x))
         suffix = (" · "+item["grade"]) if item["grade"] else (" · "+item["country"]) if item["country"] else ""
+        if item.get("section"):
+            suffix += " · "+item["section"]
         if kind != "locations":
             suffix += " · "+item["location"]
         elif item["visibility"]:
             suffix += " · "+("общий" if item["visibility"] == "public" else "личный")
-        keyboard.append([button((item["name"]+suffix)[:90], f"cs:{token}:{i}")])
+        keyboard.append([button((" / ".join(names)+suffix)[:120], f"cs:{token}:{i}")])
     if result["next_offset"] is not None:
         keyboard.append([button("Далее", f"cp:{token}:{result['next_offset']}")])
     if offset:
@@ -167,7 +170,14 @@ async def handle(session, user, job, reply):
         key = next(x[2] for x in LEVELS if x[0] == field)
         reset_from(facts, field)
         facts[field], facts[key] = item.name, item.id
-        if selection.get("query"):
+        # Broad metadata queries (e.g. a grade or country) must not become name aliases.
+        # Remember an explicit spelling only when it resembles a name of this item.
+        from sqlalchemy import select, func, or_
+        names = [item.name, getattr(item, "name_en", None), getattr(item, "name_native", None)]
+        resembles_name = selection.get("query") and await session.scalar(select(or_(*(
+            func.catalog_normalize(name).op("OPERATOR(public.%)")(func.catalog_normalize(selection["query"]))
+            for name in names if name))))
+        if resembles_name:
             await remember(session, user.id, selection["kind"], item.id, selection["query"])
     elif command.startswith("cn:"):
         if not selection.get("query"):
@@ -201,6 +211,7 @@ async def private_hierarchy(session, uid, facts, training):
     area = await session.get(Location, facts["location_id"]) if facts.get("location_id") else None
     needs_private = any(facts.get("create_"+field) for field in ("region", "sector", "name"))
     if needs_private and (not area or area.visibility == "public"):
+        source_section = await session.get(Section, facts["section_id"]) if facts.get("section_id") else None
         country = area.country if area else None
         private = await session.scalar(select(Location).where(Location.owner_id == uid, Location.visibility == "private",
             func.catalog_normalize(Location.name) == func.catalog_normalize(facts["region"]),
@@ -215,11 +226,15 @@ async def private_hierarchy(session, uid, facts, training):
         area = private
         facts["location_id"] = area.id
         facts.pop("section_id", None)
+        if source_section:
+            facts["sector_name_en"] = source_section.name_en
+            facts["sector_name_native"] = source_section.name_native
     if needs_private and not facts.get("section_id"):
         section = await session.scalar(select(Section).where(Section.location_id == area.id,
             func.catalog_normalize(Section.name) == func.catalog_normalize(facts["sector"])))
         if not section:
-            section = Section(location_id=area.id, type="wall" if area.type=="gym" else "sector", name=facts["sector"])
+            section = Section(location_id=area.id, type="wall" if area.type=="gym" else "sector", name=facts["sector"],
+                              name_en=facts.get("sector_name_en"), name_native=facts.get("sector_name_native"))
             session.add(section)
             await session.flush()
         facts["section_id"] = section.id

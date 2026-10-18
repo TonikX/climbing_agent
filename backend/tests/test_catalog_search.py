@@ -55,6 +55,54 @@ class CatalogSearchTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(result["items"][0]["id"],expected)
                 self.assertEqual(await session.scalar(text("SHOW jit")),"off")
 
+    async def test_multilingual_names_metadata_and_similar_choices(self):
+        await self.seed()
+        async with AsyncSession(bind=self.conn, expire_on_commit=False, join_transaction_mode="create_savepoint") as session:
+            sector = await session.get(Section, self.sector.id)
+            sector.name_en, sector.name_native = "Moon wall", "Лунная стена"
+            route = await session.get(Route, self.route.id)
+            route.name_en, route.name_native = "Moon river", "Лунная река"
+            session.add(Route(name="Moon rivers", section_id=self.sector.id, grade="6B"))
+            await session.commit()
+        for kind, query, parent, expected in (
+            ("sections", "ЛУННАЯ СТЕНА", self.area.id, self.sector.id),
+            ("sections", "Moon wall", self.area.id, self.sector.id),
+            ("routes", "Лунная река", self.sector.id, self.route.id),
+            ("routes", "Moon river", self.sector.id, self.route.id)):
+            response = await self.client.get(f"/api/v1/catalog-search/{kind}", headers=self.a,
+                params={"q": query, "parent_id": parent})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()["items"][0]["id"], expected)
+            self.assertEqual(response.json()["items"][0]["match"], "exact")
+        for query in ("6A", "Лунная стена", "river", "Moon riverr"):
+            response = await self.client.get("/api/v1/catalog-search/routes", headers=self.a,
+                params={"q": query, "parent_id": self.sector.id})
+            items = response.json()["items"]
+            self.assertIn(self.route.id, [x["id"] for x in items])
+            self.assertTrue(all(x["match"] == "similar" for x in items))
+            if query == "Moon riverr":
+                self.assertEqual(len(items), 2)
+            self.assertEqual(next(x for x in items if x["id"] == self.route.id)["name_native"], "Лунная река")
+
+    async def test_language_fields_create_patch_and_public_protection(self):
+        await self.seed()
+        area = (await self.client.post("/api/v1/catalog/locations", headers=self.a,
+            json={"name": "My area"})).json()
+        sector = await self.client.post("/api/v1/catalog/sections", headers=self.a,
+            json={"location_id": area["id"], "name": "Скала", "name_native": "Скала", "name_en": "Rock"})
+        self.assertEqual(sector.status_code, 200, sector.text)
+        self.assertEqual(sector.json()["name_en"], "Rock")
+        route = await self.client.post("/api/v1/catalog/routes", headers=self.a,
+            json={"section_id": sector.json()["id"], "name": "Путь", "name_native": "Путь", "name_en": "Way"})
+        self.assertEqual(route.status_code, 200, route.text)
+        changed = await self.client.patch(f"/api/v1/catalog/routes/{route.json()['id']}", headers=self.a,
+            json={"name_en": "The way"})
+        self.assertEqual(changed.status_code, 200, changed.text)
+        self.assertEqual(changed.json()["name_en"], "The way")
+        denied = await self.client.patch(f"/api/v1/catalog/routes/{self.route.id}", headers=self.a,
+            json={"name_en": "Overwrite shared name"})
+        self.assertIn(denied.status_code, (403, 404))
+
     async def test_search_alias_privacy_typo_parent_and_exact_shared_reuse(self):
         await self.seed()
         result = await self.client.get("/api/v1/catalog-search/locations", headers=self.a, params={"q":"GEYIKBAYIRI"})

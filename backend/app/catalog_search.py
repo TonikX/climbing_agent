@@ -37,19 +37,30 @@ async def search(session, uid, kind, query="", parent_id=None, offset=0, limit=8
     # SET LOCAL affects only this transaction, never the shared server configuration.
     await session.execute(text("SET LOCAL jit=off"))
     model, alias_field = KINDS[kind]
-    name = func.catalog_normalize(model.name)
+    names = [func.catalog_normalize(model.name)]
+    if model in (Section, Route):
+        names += [func.catalog_normalize(model.name_en), func.catalog_normalize(model.name_native)]
+    fields = [Location.country, Location.region, Location.city]
+    if model in (Section, Route):
+        fields += [Location.name, Section.type]
+    if model is Route:
+        fields += [Section.name, Section.name_en, Section.name_native,
+                   Route.grade, Route.color, Route.route_number, Route.setter]
+    fields = names + [func.catalog_normalize(field) for field in fields]
     q = await session.scalar(select(func.catalog_normalize(query)))
     if query.strip() and not q:
         raise HTTPException(422, "Enter a name containing letters or digits")
     aliases = select(CatalogAlias).where(CatalogAlias.owner_id == uid,
         getattr(CatalogAlias, alias_field) == model.id)
     exact_alias = exists(aliases.where(func.catalog_normalize(CatalogAlias.name) == q))
-    exact = or_(name == q, exact_alias) if q else name == ""
+    # Only names/confirmed aliases can select an entity automatically, never metadata.
+    exact = func.coalesce(or_(*(name == q for name in names), exact_alias), False) if q else literal(False)
     alias_score = select(func.max(func.public.similarity(func.catalog_normalize(CatalogAlias.name), q))).where(
         CatalogAlias.owner_id == uid, getattr(CatalogAlias, alias_field) == model.id).correlate(model).scalar_subquery()
-    score = func.greatest(func.public.similarity(name, q), func.coalesce(alias_score, 0)) if q else literal(0.0)
+    score = func.greatest(*(func.public.similarity(field, q) for field in fields), func.coalesce(alias_score, 0)) if q else literal(0.0)
     stmt = select(model, score.label("score"), exact.label("exact"), Location.country,
-                  Location.name.label("area_name")).select_from(model)
+                  Location.name.label("area_name"),
+                  Section.name if model is Route else literal(None)).select_from(model)
     if model is Section:
         stmt = stmt.join(Location)
         if parent_id:
@@ -62,13 +73,17 @@ async def search(session, uid, kind, query="", parent_id=None, offset=0, limit=8
         raise HTTPException(422, "Locations have no parent")
     stmt = stmt.where(visible(uid))
     if q:
-        stmt = stmt.where(or_(exact, name.startswith(q, autoescape=True), name.op("OPERATOR(public.%)")(q), exists(
-            aliases.where(func.catalog_normalize(CatalogAlias.name).op("OPERATOR(public.%)")(q)))))
+        def matches(field):
+            return or_(field.contains(q, autoescape=True), field.op("OPERATOR(public.%)")(q))
+        stmt = stmt.where(or_(exact, *(matches(field) for field in fields), exists(
+            aliases.where(matches(func.catalog_normalize(CatalogAlias.name))))))
     stmt = stmt.order_by(exact.desc(), score.desc(), model.name, model.id).offset(offset).limit(limit+1)
     values = (await session.execute(stmt)).all()
     items = []
-    for item, rank, is_exact, country, area_name in values[:limit]:
+    for item, rank, is_exact, country, area_name, section_name in values[:limit]:
         items.append({"id": item.id, "name": item.name, "grade": getattr(item, "grade", None),
+            "name_en": getattr(item, "name_en", None), "name_native": getattr(item, "name_native", None),
+            "section": section_name,
             "parent_id": getattr(item, "location_id", None) or getattr(item, "section_id", None),
             "location": area_name, "country": country, "type": getattr(item, "type", None), "visibility": getattr(item, "visibility", None),
             "match": "exact" if is_exact else "similar", "score": round(float(rank), 3)})

@@ -139,6 +139,9 @@ async def catalog_get(kind: Literal["locations", "sections", "routes"], item_id:
 class CatalogSearchItem(BaseModel):
     id: str
     name: str
+    name_en: str | None = None
+    name_native: str | None = None
+    section: str | None = None
     grade: str | None
     parent_id: str | None
     location: str
@@ -186,7 +189,7 @@ async def catalog_patch(kind: Literal["locations", "sections", "routes"], item_i
         raise HTTPException(404, "Catalogue item not found")
     await _writable(session, item)
     changes = command.model_dump(exclude_unset=True)
-    allowed = {"name", "country"} if kind == "locations" else {"name", "grade"} if kind == "routes" else {"name"}
+    allowed = {"name", "country"} if kind == "locations" else {"name", "name_en", "name_native", "grade"} if kind == "routes" else {"name", "name_en", "name_native"}
     if set(changes) - allowed or changes.get("name", "ok") is None:
         raise HTTPException(422, "Invalid catalogue fields")
     for key, value in changes.items():
@@ -480,7 +483,7 @@ async def section_create(command: SectionWrite, session: Session, uid: UserId):
     area = await session.get(Location, command.location_id)
     if not area:
         raise HTTPException(404, "Location not found")
-    return _section_dict(await _section(session, area, {"name": command.name}))
+    return _section_dict(await _section(session, area, command.model_dump()))
 
 
 @router.post("/catalog/routes")
@@ -490,4 +493,4 @@ async def route_create(command: RouteWrite, session: Session, uid: UserId):
     section = await session.get(Section, command.section_id)
     if not section:
         raise HTTPException(404, "Section not found")
-    return _route_dict(await _route(session, section, {"name": command.name, "grade": command.grade}))
+    return _route_dict(await _route(session, section, command.model_dump()))

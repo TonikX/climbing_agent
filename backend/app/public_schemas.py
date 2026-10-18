@@ -111,11 +111,15 @@ class LocationWrite(Strict):
 class SectionWrite(Strict):
     location_id: str
     name: str = Field(min_length=1, max_length=200)
+    name_en: str | None = Field(default=None, min_length=1, max_length=200)
+    name_native: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class RouteWrite(Strict):
     section_id: str
     name: str = Field(min_length=1, max_length=200)
+    name_en: str | None = Field(default=None, min_length=1, max_length=200)
+    name_native: str | None = Field(default=None, min_length=1, max_length=200)
     grade: str | None = Field(default=None, max_length=30)
 
 
@@ -129,6 +133,8 @@ class GearPatch(Strict):
 
 class CatalogPatch(Strict):
     name: str | None = Field(default=None, min_length=1, max_length=200)
+    name_en: str | None = Field(default=None, min_length=1, max_length=200)
+    name_native: str | None = Field(default=None, min_length=1, max_length=200)
     grade: str | None = Field(default=None, max_length=30)
     country: str | None = Field(default=None, max_length=200)
 

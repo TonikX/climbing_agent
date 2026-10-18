@@ -70,6 +70,63 @@ def training(key, day, minutes=None):
 
 
 class ExtendedStatisticsTest(unittest.TestCase):
+    def test_clean_and_top_maxima_use_only_attempts_with_that_outcome(self):
+        # Editing the historical grade on one attempt must not upgrade another send.
+        values = [graded("same", 1, "6A", clean=True), graded("same", 2, "7A")]
+        summary = _summary(values)
+        self.assertEqual(summary["maxAttemptedGrade"], "7A")
+        self.assertEqual(summary["maxReachedTopGrade"], "6A")
+        self.assertEqual(summary["maxCompletedGrade"], "6A")
+
+    def test_cyrillic_grade_letters_have_same_rank_as_latin(self):
+        self.assertEqual(_grade_rank("6С+"), _grade_rank("6C+"))
+        self.assertEqual(_grade_rank("6В/6В+"), _grade_rank("6B/6B+"))
+
+    def test_equivalent_grade_spellings_share_one_breakdown_bucket(self):
+        groups = _grade_breakdown([graded("a", 1, "6A"), graded("b", 2, "6a"), graded("c", 3, "6а")])
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["routesCount"], 3)
+
+    def test_normalization_preserves_snapshot_and_merges_reversed_split(self):
+        values = [graded("a", 1, "6в+ / 6в", clean=True), graded("b", 2, "6B/6B+")]
+        groups = _grade_breakdown(values)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["grade"], "6B/6B+")
+        self.assertEqual(values[0].route_snapshot["grade"], "6в+ / 6в")
+
+    def test_compact_format_keeps_all_grade_rows_and_omits_zero_styles(self):
+        from app.telegram_format import statistics
+        values = [graded(str(i), i, "6A", clean=True) for i in range(3)]
+        dto = {"scope": "grades", **_summary(values), "grades": _grade_breakdown(values)}
+        output = statistics(dto)
+        self.assertIn("Категория | трасс | попыток | чисто", output)
+        self.assertIn("6A | 3 | 3 | 3 (100%)", output)
+        self.assertNotIn("Flash: 0", output)
+        self.assertLess(len(output.splitlines()), 13)
+
+    def test_belay_partition_weighted_counts_and_all_test_input(self):
+        values = [graded(str(i), i, "6A", clean=i % 2 == 0) for i in range(5)]
+        for i, (item, belay) in enumerate(zip(values, ("lead", "top_rope", "auto_belay", "bouldering", "unknown")), 1):
+            item.belay, item.attempts = belay, i
+        summary = _summary(values)
+        self.assertEqual(summary["attemptsCount"], 15)
+        self.assertEqual(sum(summary[k] for k in ("leadAttemptsCount", "topRopeAttemptsCount",
+            "autoBelayAttemptsCount", "boulderingAttemptsCount", "unknownBelayAttemptsCount")), 15)
+        self.assertEqual(summary["completedRoutes"] + summary["activeProjects"], summary["routesCount"])
+        for item in values:
+            item.is_test = True
+        self.assertEqual(_summary(values), _summary([]))
+
+    def test_formatter_shows_duration_efficiency_and_comparison(self):
+        from app.telegram_format import statistics
+        value = {"scope": "month", "durationMinutes": 90, "completionRate": .5,
+                 "attemptsPerRoute": 2, "attemptsPerCompletedRoute": 4,
+                 "comparison": {"completedRoutes": "up"}}
+        formatted = statistics(value)
+        self.assertIn("50%", formatted)
+        self.assertTrue("90" in formatted or "1 ч 30" in formatted)
+        self.assertIn("↑", formatted)
+
     def test_maxima_rates_and_session_counts(self):
         summary = _summary([
             graded("a", 1, "7A"), graded("b", 2, "6C"),
@@ -127,6 +184,19 @@ class ExtendedStatisticsTest(unittest.TestCase):
 
 
 class PeriodStatisticsTest(unittest.IsolatedAsyncioTestCase):
+    async def test_leap_month_week_year_boundary_and_end_only(self):
+        cases = [
+            ({"scope": "month", "dateFrom": "2024-02-01"}, date(2024, 2, 1), date(2024, 2, 29)),
+            ({"scope": "week", "dateTo": "2026-01-01"}, date(2025, 12, 29), date(2026, 1, 1)),
+            ({"scope": "month", "dateTo": "2026-09-17"}, date(2026, 9, 1), date(2026, 9, 17)),
+        ]
+        for filters, start, end in cases:
+            with patch("app.tool_service._user", AsyncMock(return_value=SimpleNamespace(id="u"))), \
+                 patch("app.tool_service._today", return_value=date(2026, 10, 17)), \
+                 patch("app.tool_service._statistics_rows", AsyncMock(return_value=[])) as rows:
+                await _statistics(None, {"user": {}, **filters})
+                self.assertEqual(rows.await_args_list[0].args[2:], (start, end))
+
     async def test_explicit_dates_and_filters_apply_to_both_periods(self):
         current = [(training("aug", "2026-08-04"), graded("a", 1, "7A", clean=True))]
         previous = [(training("jul", "2026-07-04"), graded("b", 1, "6A", clean=True)),

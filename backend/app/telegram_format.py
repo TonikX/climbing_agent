@@ -48,57 +48,117 @@ def stats_menu() -> list:
             [button("🏆 Рекорды", "stats:records")], [button("← Главное меню", "journal")]]
 
 
+def _number(value):
+    return "—" if value is None else f"{value:g}" if isinstance(value, (int, float)) else str(value)
+
+
+def _duration(minutes):
+    if minutes is None:
+        return ""
+    hours, rest = divmod(int(minutes), 60)
+    return f"{hours} ч {rest} мин" if hours else f"{rest} мин"
+
+
+def _percent(value):
+    return "—" if value is None else f"{value:.0%}"
+
+
 def summary(dto: dict) -> str:
     value = dto.get("summary", dto)
     lines = [f"{value.get('routesCount', 0)} трасс · {value.get('attemptsCount', 0)} попыток",
-             f"🏁 {value.get('reachedTopRoutes', value.get('reachedTopCount', 0))} — дошёл до конца",
-             f"✅ {value.get('completedRoutes', 0)} — чисто",
-             f"❓ {value.get('unknownCleanRoutes', 0)} — чистота не уточнена",
-             f"👁 {value.get('onsightCount', 0)} Onsight", f"⚡ {value.get('flashCount', 0)} Flash",
-             f"🎯 {value.get('redpointCount', 0)} Red Point",
-             f"🪢 Верхняя (стиль): {value.get('topRopeStyleAttemptsCount', 0)} попыток",
-             f"❔ {value.get('unknownStyleCount', 0)} — стиль не указан",
-             f"Со срывом: {value.get('withFallsAttemptsCount', 0)} попыток",
-             f"С зависанием: {value.get('withHangsAttemptsCount', 0)} попыток",
-             f"🔄 {value.get('activeProjects', 0)} проекта"]
-    for key, label in (("maxAttemptedGrade", "пробовал"), ("maxReachedTopGrade", "дошёл до конца"), ("maxCompletedGrade", "чисто")):
-        if value.get(key):
-            lines.append(f"Максимум {label}: {value[key]}")
-    for key, label in (("leadAttemptsCount", "Нижняя страховка"), ("topRopeAttemptsCount", "Верхняя страховка"),
-                       ("autoBelayAttemptsCount", "Автостраховка"), ("boulderingAttemptsCount", "Боулдеринг"),
-                       ("unknownBelayAttemptsCount", "Страховка не указана")):
-        lines.append(f"{label}: {value.get(key, 0)}")
+             f"🏁 Дошёл: {value.get('reachedTopRoutes', value.get('reachedTopCount', 0))} · "
+             f"✅ Чисто: {value.get('completedRoutes', 0)} · 🔄 Проекты: {value.get('activeProjects', 0)}"]
+    if value.get("unknownCleanRoutes"):
+        lines.append(f"❓ Чистота не уточнена: {value['unknownCleanRoutes']}")
+    styles = [f"{label}: {value[key]}" for key, label in (
+        ("onsightCount", "👁 Onsight"), ("flashCount", "⚡ Flash"),
+        ("redpointCount", "🎯 Red Point"), ("unknownStyleCount", "Стиль не указан")) if value.get(key)]
+    if styles:
+        lines.append(" · ".join(styles))
+    weighted = [f"{label}: {value[key]} попыток" for key, label in (
+        ("topRopeStyleAttemptsCount", "Верхняя (стиль)"), ("withFallsAttemptsCount", "Со срывом"),
+        ("withHangsAttemptsCount", "С зависанием")) if value.get(key)]
+    if weighted:
+        lines.append(" · ".join(weighted))
+    belays = [f"{label} {value[key]}" for key, label in (
+        ("leadAttemptsCount", "нижняя"), ("topRopeAttemptsCount", "верхняя"),
+        ("autoBelayAttemptsCount", "авто"), ("boulderingAttemptsCount", "боулдеринг"),
+        ("unknownBelayAttemptsCount", "не указана")) if value.get(key)]
+    if belays:
+        lines.append("Страховка, попытки: " + " · ".join(belays))
+    maxima = [f"{label} {value[key]}" for key, label in (
+        ("maxAttemptedGrade", "пробовал"), ("maxReachedTopGrade", "дошёл"),
+        ("maxCompletedGrade", "чисто")) if value.get(key)]
+    if maxima:
+        lines.append("Максимум: " + " · ".join(maxima))
+    if "completionRate" in value:
+        lines.append(f"Закрыто: {_percent(value['completionRate'])} · "
+                     f"Попыток/трасса: {_number(round(value['attemptsPerRoute'], 1) if value.get('attemptsPerRoute') is not None else None)} · "
+                     f"Попыток/чистая: {_number(round(value['attemptsPerCompletedRoute'], 1) if value.get('attemptsPerCompletedRoute') is not None else None)}")
     return "\n".join(lines)
+
+
+def _comparison_line(dto):
+    arrows = {"up": "↑", "down": "↓", "equal": "="}
+    changes = dto.get("comparison") or {}
+    values = [f"{label} {arrows[changes[key]]}" for key, label in (
+        ("trainingsCount", "тренировки"), ("completedRoutes", "чистые"),
+        ("completionRate", "доля закрытых"), ("attemptsPerCompletedRoute", "попыток/чистая"),
+        ("maxCompletedGrade", "макс. чисто")) if changes.get(key) in arrows]
+    return " · ".join(values)
 
 
 def statistics(dto: dict) -> str:
     value = dto.get("training", dto)
     if value is None or dto.get("active") is False:
         return "Тренировка не найдена."
-    labels = {"week": "📅 Эта неделя", "month": "🗓 Этот месяц", "last_training": "🕘 Последняя тренировка",
+    labels = {"week": "📅 Неделя", "month": "🗓 Месяц", "last_training": "🕘 Последняя тренировка",
               "progress": "📈 Прогресс", "grades": "🎯 По категориям", "locations": "📍 По локациям",
               "projects": "🔄 Проекты", "records": "🏆 Рекорды"}
     lines = [labels.get(dto.get("scope"), "🧗 Текущая тренировка")]
-    location = value.get("location") or {}
-    if location.get("name"):
-        lines.append(location["name"])
-    if value.get("date"):
-        lines.append(value["date"])
-    if "trainingsCount" in value:
-        lines.append(f"{value['trainingsCount']} тренировок")
+    context = [str(x) for x in ((value.get("location") or {}).get("name"), value.get("date")) if x]
+    if dto.get("dateFrom") or dto.get("dateTo"):
+        context.append(f"{dto.get('dateFrom') or 'начало'} — {dto.get('dateTo') or 'сейчас'}")
+    if value.get("trainingsCount") is not None:
+        context.append(f"{value['trainingsCount']} тренировок")
+    if value.get("durationMinutes") is not None:
+        context.append(_duration(value["durationMinutes"]))
+    if context:
+        lines.append(" · ".join(context))
     lines.append(summary(value))
-    for key in ("grades", "locations", "projects", "periods"):
-        for row in dto.get(key, [])[:15]:
-            title = row.get("grade") or (row.get("location") or {}).get("name") or row.get("name") or row.get("period", "")
-            if key == "projects":
-                route = row.get("route") or {}
-                lines.append(f"\n{route.get('name') or 'Трасса'} {route.get('grade') or ''}\nТочка: {row.get('highPoint')} / {row.get('totalMoves')}")
-            else:
-                lines.append(f"\n{title}\n{summary(row)}")
-    if dto.get("records"):
-        labels = {"highestCompletedGrade": "Чисто", "highestFlashGrade": "Flash", "highestRedpointGrade": "Red Point",
-                  "totalTrainings": "Тренировок", "totalAttempts": "Попыток", "totalCompletedRoutes": "Чистых трасс"}
-        lines.append("\n" + "\n".join(f"{labels.get(k, k)}: {v if v is not None else 'нет данных'}" for k, v in dto["records"].items()))
+    previous = dto.get("previousPeriod")
+    if previous is not None:
+        lines.append(f"\nПредыдущий период: {previous.get('dateFrom', '—')} — {previous.get('dateTo', '—')}\n"
+                     f"{previous.get('trainingsCount', 0)} тренировок · {_duration(previous.get('durationMinutes')) or '—'} · "
+                     f"чисто {previous.get('completedRoutes', 0)} · {_percent(previous.get('completionRate'))} · "
+                     f"макс. {_number(previous.get('maxCompletedGrade'))}")
+    if comparison := _comparison_line(dto):
+        lines.append("Изменение: " + comparison)
+    grades = dto.get("grades", [])
+    if grades:
+        lines.append("\nКатегория | трасс | попыток | чисто")
+        for row in grades:
+            lines.append(f"{row['grade']} | {row.get('routesCount', 0)} | {row.get('attemptsCount', 0)} | "
+                         f"{row.get('completedRoutes', 0)} ({_percent(row.get('completionRate'))})")
+    for row in dto.get("locations", []):
+        lines.append(f"\n📍 {(row.get('location') or {}).get('name') or 'Без локации'}: "
+                     f"{row.get('trainingsCount', 0)} трен. · {row.get('routesCount', 0)} трасс · "
+                     f"{row.get('attemptsCount', 0)} попыток · чисто {row.get('completedRoutes', 0)} "
+                     f"({_percent(row.get('completionRate'))}) · макс. {_number(row.get('maxCompletedGrade'))}")
+    for row in dto.get("projects", []):
+        route = row.get("route") or {}
+        lines.append(f"• {route.get('name') or 'Трасса'} {route.get('grade') or ''} · "
+                     f"точка {_number(row.get('highPoint'))}/{_number(row.get('totalMoves'))} · срывов {_number(row.get('falls'))}")
+    periods = dto.get("periods", [])
+    if periods:
+        lines.append("\nМесяц | трен. | чисто/трасс | макс. чисто")
+        for row in sorted(periods, key=lambda x: x['period']):
+            lines.append(f"{row['period']} | {row.get('trainingsCount', 0)} | "
+                         f"{row.get('completedRoutes', 0)}/{row.get('routesCount', 0)} | {_number(row.get('maxCompletedGrade'))}")
+    records = dto.get("records")
+    if records:
+        lines.append("\nРекорды: " + " · ".join(f"{label} {_number(records.get(key))}" for key, label in (
+            ("highestCompletedGrade", "чисто"), ("highestFlashGrade", "Flash"), ("highestRedpointGrade", "Red Point"))))
     return "\n".join(lines)
 
 
