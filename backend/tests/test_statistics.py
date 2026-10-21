@@ -99,10 +99,21 @@ class ExtendedStatisticsTest(unittest.TestCase):
         values = [graded(str(i), i, "6A", clean=True) for i in range(3)]
         dto = {"scope": "grades", **_summary(values), "grades": _grade_breakdown(values)}
         output = statistics(dto)
-        self.assertIn("Категория | трасс | попыток | чисто", output)
-        self.assertIn("6A | 3 | 3 | 3 (100%)", output)
+        self.assertIn("По категориям", output)
+        self.assertIn("│ 6A", output)
+        self.assertIn("3 (100%)", output)
         self.assertNotIn("Flash: 0", output)
-        self.assertLess(len(output.splitlines()), 13)
+        self.assertLess(len(output.splitlines()), 17)
+
+    def test_table_alignment_and_telegram_utf16_entities(self):
+        from app.telegram_format import grade_table, table_entities
+        table = grade_table([{'grade': '6B/6B+', 'routesCount': 12, 'attemptsCount': 123,
+                              'completedRoutes': 3, 'completionRate': .25}])
+        self.assertEqual(len({len(line) for line in table.splitlines()}), 1)
+        text = '🧗 Статистика\n' + table
+        entity = table_entities(text)[0]
+        raw = text.encode('utf-16-le')
+        self.assertEqual(raw[entity['offset']*2:(entity['offset']+entity['length'])*2].decode('utf-16-le'), table)
 
     def test_belay_partition_weighted_counts_and_all_test_input(self):
         values = [graded(str(i), i, "6A", clean=i % 2 == 0) for i in range(5)]

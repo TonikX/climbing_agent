@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import test_public_service as journal_tests
 from app.models import CatalogAlias, Location, Section, Route, RouteAttempt, TrainingSession, ExternalRef
-from app.public_models import DialogState, Job
+from app.public_models import DialogState, Job, Outbox
 from app.public_schemas import Intent
 
 
@@ -54,6 +54,75 @@ class CatalogSearchTest(unittest.IsolatedAsyncioTestCase):
                 result=await search(session,self.uid,kind,name,parent)
                 self.assertEqual(result["items"][0]["id"],expected)
                 self.assertEqual(await session.scalar(text("SHOW jit")),"off")
+
+    async def test_transliteration_and_language_fields_keep_parent_scope(self):
+        await self.seed()
+        async with AsyncSession(bind=self.conn, expire_on_commit=False, join_transaction_mode="create_savepoint") as session:
+            sector = await session.get(Section, self.sector.id)
+            sector.name = "Кебап"
+            route = await session.get(Route, self.route.id)
+            route.name, route.name_native, route.name_en = "Лунная река", "Лунная река", "Moon River"
+            await session.commit()
+        for kind, query, parent, expected, match in (
+            ("sections", "Kebap", self.area.id, self.sector.id, "similar"),
+            ("routes", "Lunnaya reka", self.sector.id, self.route.id, "similar"),
+            ("routes", "Lunnaia reka", self.sector.id, self.route.id, "similar"),
+            ("routes", "Moon River", self.sector.id, self.route.id, "exact"),
+            ("routes", "ЛУННАЯ РЕКА", self.sector.id, self.route.id, "exact")):
+            response = await self.client.get("/api/v1/catalog-search/"+kind, headers=self.a,
+                params={"q":query,"parent_id":parent})
+            self.assertEqual(response.status_code,200,response.text)
+            item = next(x for x in response.json()["items"] if x["id"] == expected)
+            self.assertEqual(item["match"],match)
+        hidden = await self.client.get("/api/v1/catalog-search/locations", headers=self.a,
+            params={"q":"Секрет локатион"})
+        self.assertNotIn(self.hidden.id, [x["id"] for x in hidden.json()["items"]])
+        outside = await self.client.get("/api/v1/catalog-search/routes", headers=self.a,
+            params={"q":"Outside only","parent_id":self.sector.id})
+        self.assertEqual(outside.json()["items"], [])
+
+    async def test_turkish_names_ascii_and_cyrillic_suggestions(self):
+        await self.seed()
+        async with AsyncSession(bind=self.conn, expire_on_commit=False, join_transaction_mode="create_savepoint") as session:
+            sector = await session.get(Section, self.sector.id)
+            sector.name, sector.name_native = "Mağara", "Mağara"
+            route = await session.get(Route, self.route.id)
+            route.name, route.name_native = "Şeker Çocuk", "Şeker Çocuk"
+            route.name_en = "İncir Özü"
+            short = Route(name="Can", section_id=self.sector.id, grade="6A")
+            session.add(short)
+            await session.flush()
+            short_id = short.id
+            await session.commit()
+        for kind, queries, parent, expected in (
+            ("locations", ("Geyikbayiri", "Гейкбаири"), None, self.area.id),
+            ("sections", ("MAGARA", "Магара", "Mağara"), self.area.id, self.sector.id),
+            ("routes", ("Seker Cocuk", "Sheker Chocuk", "Шекер Чоджук", "ŞEKER ÇOCUK",
+                        "İNCİR ÖZÜ", "Incir Ozu", "Инджир Озю"), self.sector.id, self.route.id),
+            ("routes", ("Can", "Джан"), self.sector.id, short_id)):
+            for query in queries:
+                params = {"q": query}
+                if parent:
+                    params["parent_id"] = parent
+                response = await self.client.get("/api/v1/catalog-search/"+kind, headers=self.a, params=params)
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertIn(expected, [item["id"] for item in response.json()["items"]], query)
+
+    async def test_llm_card_in_name_and_cyrillic_grade_save_without_duplicate_fields(self):
+        await self.seed()
+        await self.client.post("/api/v1/trainings", headers=self.a, json={"date":"2026-10-20"})
+        await self.send("2", "Запиши Engesh")
+        await self.process("ai", Intent(kind="attempt", region="Geyikbayiri", sector="Kebap",
+            name="Регион: Geyikbayiri Сектор: Kebap Название трассы: Engesh Категория: 6а Чисто: да",
+            grade="6а", style="flash", belay="lead"))
+        snapshot = await self.conn.scalar(select(RouteAttempt.route_snapshot))
+        self.assertEqual(snapshot["name"], "Engesh")
+        self.assertEqual(snapshot["grade"], "6A")
+        self.assertIsNone(await self.draft())
+        payload = await self.conn.scalar(select(Outbox.payload).order_by(Outbox.sequence.desc()).limit(1))
+        self.assertTrue(payload["text"].startswith("Сохранено."))
+        for label in ("Регион:", "Сектор:", "Название трассы:", "Категория:"):
+            self.assertEqual(payload["text"].count(label), 1)
 
     async def test_multilingual_names_metadata_and_similar_choices(self):
         await self.seed()
@@ -114,7 +183,9 @@ class CatalogSearchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(alias.status_code,200,alias.text)
         found=(await self.client.get("/api/v1/catalog-search/locations",headers=self.a,params={"q":"Гейкбаири"})).json()["items"]
         self.assertEqual(found[0]["match"],"exact")
-        self.assertEqual((await self.client.get("/api/v1/catalog-search/locations",headers=self.b,params={"q":"Гейкбаири"})).json()["items"],[])
+        other_results = (await self.client.get("/api/v1/catalog-search/locations",headers=self.b,params={"q":"Гейкбаири"})).json()["items"]
+        # Public names can match by transliteration, but another user's alias cannot be exact.
+        self.assertTrue(all(item["match"] == "similar" for item in other_results))
         denied=await self.client.post(f"/api/v1/catalog-aliases/locations/{self.hidden.id}",headers=self.a,json={"name":"leak"})
         self.assertEqual(denied.status_code,404)
         fuzzy=(await self.client.get("/api/v1/catalog-search/routes",headers=self.a,params={"q":"Engeshh","parent_id":self.sector.id})).json()["items"]

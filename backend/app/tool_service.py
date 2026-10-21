@@ -182,6 +182,11 @@ async def _section(session: AsyncSession, area: Location | None, raw: dict[str, 
 
 
 async def _route(session: AsyncSession, section: Section | None, raw: dict[str, Any]) -> Route | None:
+    from app.route_input import route_name
+    if raw.get("name"):
+        raw = {**raw, "name": route_name(raw["name"])}
+    if raw.get("grade") is not None:
+        raw = {**raw, "grade": _grade_key(raw["grade"])}
     item = await session.get(Route, str(raw["routeId"])) if raw.get("routeId") else None
     item = item or await _by_ref(session, "route", raw.get("externalRefs"))
     await _visible(session, item)
@@ -241,6 +246,11 @@ async def _last_attempt(session: AsyncSession, user_id: str, active_only: bool =
 
 async def _attempt(session: AsyncSession, training: TrainingSession, area: Location | None,
                    default_section: Section | None, raw: dict[str, Any], *, force_test: bool = False) -> RouteAttempt:
+    from app.route_input import route_name
+    if raw.get("name"):
+        raw = {**raw, "name": route_name(raw["name"])}
+    if raw.get("grade") is not None:
+        raw = {**raw, "grade": _grade_key(raw["grade"])}
     await _visible(session, area)
     await _visible(session, default_section)
     previous = await _last_attempt(session, training.user_id, training_id=training.id)
@@ -526,11 +536,8 @@ async def _delete_attempt(session: AsyncSession, p: dict[str, Any]) -> dict[str,
 
 
 def _grade_key(value: str | None) -> str:
-    value = re.sub(r"\s+", "", (value or "").upper()).translate(str.maketrans("АВС", "ABC"))
-    parts = value.split("/")
-    if all(re.fullmatch(r"\d+[ABC]?\+?", part) for part in parts):
-        return "/".join(sorted(set(parts), key=lambda part: (int(re.match(r"\d+", part)[0]), part)))
-    return value
+    from app.grades import normalize_grade
+    return normalize_grade(value) or ""
 
 
 def _grade_rank(value: str | None) -> tuple[int, int, int, int]:

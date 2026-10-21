@@ -12,7 +12,7 @@ from app.db import set_user_context
 from app.models import ExternalRef, Gear, Location, TrainingSession, User
 from app.public_models import AccessRequest, DeletionRecord, Job, Outbox, Usage, TelegramUpdate
 from app.public_schemas import Intent
-from app.telegram_format import attempts, button, menu, reply_menu, statistics, stats_menu
+from app.telegram_format import attempts, button, menu, reply_menu, statistics, stats_menu, table_entities
 from app.tool_service import _active, _get_current, _get_trainings, _statistics, execute_tool, _gear_dict
 from app.auth import user_payload
 from app.jobs import now
@@ -24,9 +24,10 @@ from app.attempt_capture import save_or_ask, place
 from app.catalog_capture import handle as handle_catalog
 
 
-async def reply(session, job: Job, value: str, keyboard=None, suffix="", document=None, access_request_id=None):
+async def reply(session, job: Job, value: str, keyboard=None, suffix="", document=None, access_request_id=None, monospace_tables=False):
     if len(value) <= 3500 or document:
-        await message(session, job.user_id, job.payload["chat_id"], f"job:{job.id}{suffix}", value, keyboard, document, access_request_id)
+        await message(session, job.user_id, job.payload["chat_id"], f"job:{job.id}{suffix}", value, keyboard, document, access_request_id,
+                      entities=table_entities(value) if monospace_tables else None)
     else:
         chunks, current = [], ""
         for line in value.splitlines():
@@ -37,7 +38,8 @@ async def reply(session, job: Job, value: str, keyboard=None, suffix="", documen
         chunks.append(current)
         for i, chunk in enumerate(chunks):
             await message(session, job.user_id, job.payload["chat_id"], f"job:{job.id}{suffix}:part:{i}", chunk,
-                          keyboard if i == len(chunks)-1 else None)
+                          keyboard if i == len(chunks)-1 else None,
+                          entities=table_entities(chunk) if monospace_tables else None)
 
 
 async def complete(session, job: Job, intent: Intent | None = None, tokens: int = 0):
@@ -112,7 +114,7 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
         keyboard = [[button("← Статистика", "stats:menu")]]
         if dto.get("active") is not False and not (scope == "last_training" and dto.get("training") is None):
             keyboard.insert(0, [button("📋 Подробнее", "training:details:current" if scope == "current" else "training:details:last")])
-        await reply(session, job, statistics(dto), keyboard)
+        await reply(session, job, statistics(dto), keyboard, monospace_tables=True)
     elif command.startswith("training:details:"):
         current = command.endswith("current")
         if current:
@@ -240,7 +242,7 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
                        "dateFrom": intent.date_from.isoformat() if intent.date_from else None,
                        "dateTo": intent.date_to.isoformat() if intent.date_to else None}
             dto = await TrainingService.current(session, identity) if intent.scope == "current" else await StatisticsService.read(session, filters)
-            await reply(session, job, statistics(dto), [[button("← Статистика", "stats:menu")]])
+            await reply(session, job, statistics(dto), [[button("← Статистика", "stats:menu")]], monospace_tables=True)
         elif intent.kind in ("update_attempts", "delete_attempts"):
             await apply_intent(session, user, job, intent, reply)
         elif intent.kind == "attempt":

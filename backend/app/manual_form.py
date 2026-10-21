@@ -151,6 +151,8 @@ async def handle(session, user, job, reply) -> bool:
         data["name"], dialog.state = command, "grade"
         await reply(session, job, "Введите категорию, например 6B или 6B/6B+.")
     elif dialog.state == "grade":
+        from app.grades import normalize_grade
+        command = normalize_grade(command)
         if not re.fullmatch(r"[1-9][ABCabc]?\+?(?:/[1-9][ABCabc]?\+?)?", command):
             await reply(session, job, "Не распознал категорию. Пример: 6B/6B+.")
             return True

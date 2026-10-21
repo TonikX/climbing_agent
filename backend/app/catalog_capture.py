@@ -56,7 +56,8 @@ async def choose(session, user, job, training, facts, field, kind, query, parent
 
 
 def grade_key(value):
-    return (value or "").strip().upper().translate(str.maketrans("АВС", "ABC")).replace(" ", "")
+    from app.grades import normalize_grade
+    return normalize_grade(value) or ""
 
 
 async def resolve(session, user, job, training, facts, reply, browse=False):
@@ -175,7 +176,7 @@ async def handle(session, user, job, reply):
         from sqlalchemy import select, func, or_
         names = [item.name, getattr(item, "name_en", None), getattr(item, "name_native", None)]
         resembles_name = selection.get("query") and await session.scalar(select(or_(*(
-            func.catalog_normalize(name).op("OPERATOR(public.%)")(func.catalog_normalize(selection["query"]))
+            func.catalog_translit(name).op("OPERATOR(public.%)")(func.catalog_translit(selection["query"]))
             for name in names if name))))
         if resembles_name:
             await remember(session, user.id, selection["kind"], item.id, selection["query"])

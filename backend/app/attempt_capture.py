@@ -66,6 +66,12 @@ async def save_or_ask(session, user, job, intent, reply):
 
 async def complete_facts(session, user, job, training, facts, reply, browse=False):
     from app.catalog_capture import resolve, private_hierarchy
+    from app.grades import normalize_grade
+    from app.route_input import route_name
+    if facts.get("grade"):
+        facts["grade"] = normalize_grade(facts["grade"])
+    if facts.get("name"):
+        facts["name"] = route_name(facts["name"])
     if not await resolve(session, user, job, training, facts, reply, browse):
         return
     if facts.get("place_only"):

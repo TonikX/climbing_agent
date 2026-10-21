@@ -164,6 +164,13 @@ class StatisticsAuditTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(payloads)
             self.assertTrue(all(len(x["text"]) <= 3500 for x in payloads))
             self.assertEqual("\n".join(x["text"].rstrip() for x in payloads), expected.rstrip())
+            if scope in ("grades", "month"):
+                self.assertTrue(any(x.get("entities") for x in payloads))
+                for payload in payloads:
+                    for entity in payload.get("entities", []):
+                        self.assertEqual(entity["type"], "pre")
+                        self.assertLessEqual(entity["offset"] + entity["length"],
+                                             len(payload["text"].encode("utf-16-le")) // 2)
         self.assertEqual(await self.conn.scalar(select(func.count(Job.id)).where(Job.lane == "ai")), 0)
         await self.send("2", "Покажи статистику за месяц")
         await self.process("ai", Intent(kind="statistics", scope="month"))

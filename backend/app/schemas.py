@@ -2,6 +2,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from app.route_input import route_name
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -59,6 +60,7 @@ class TrainingCreate(BaseModel):
 
 
 class AttemptCreate(BaseModel):
+    _route_name = field_validator("name", mode="before")(route_name)
     model_config = ConfigDict(extra="forbid")
     route_id: str | None = None
     name: str | None = None
@@ -76,6 +78,12 @@ class AttemptCreate(BaseModel):
     feel: Literal["easy", "comfortable", "limit", "unknown"] = "unknown"
     notes: str | None = None
     is_test: bool = False
+
+    @field_validator("grade", mode="before")
+    @classmethod
+    def canonical_grade(cls, value):
+        from app.grades import normalize_grade
+        return normalize_grade(value) if isinstance(value, str) else value
 
 
 class FinishTraining(BaseModel):

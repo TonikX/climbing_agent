@@ -27,8 +27,11 @@ async def telegram_user(session: AsyncSession, telegram_id: str, name: str = "С
 
 
 async def message(session: AsyncSession, user_id: str | None, chat_id: str, key: str, text_value: str,
-                  keyboard: list | dict | None = None, document: dict | None = None, access_request_id: str | None = None) -> None:
+                  keyboard: list | dict | None = None, document: dict | None = None, access_request_id: str | None = None,
+                  entities: list | None = None) -> None:
     payload = {"text": text_value[:4000]}
+    if entities:
+        payload["entities"] = entities
     if keyboard:
         payload["reply_markup"] = keyboard if isinstance(keyboard, dict) else {"inline_keyboard": keyboard}
     if document:

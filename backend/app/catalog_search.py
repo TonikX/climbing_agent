@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, func, or_, and_, exists, literal, text
 
 from app.models import CatalogAlias, Location, Section, Route
+from app.search_spelling import TRANSLIT_SQL
 
 KINDS = {"locations": (Location, "location_id"), "sections": (Section, "section_id"), "routes": (Route, "route_id")}
 NORMALIZE_SQL = """CREATE OR REPLACE FUNCTION catalog_normalize(value text) RETURNS text
@@ -10,7 +11,7 @@ LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $$
  SELECT regexp_replace(translate(lower(replace(value,'İ','I')),
  'ığşçöüâîûáàäãåéèêëíìïóòôõúùÿñё',
  'igscouaiuaaaaaeeeeiiioooouuynе'), '[^[:alnum:]]+', '', 'g')
-$$"""
+$$""" + ";\n" + TRANSLIT_SQL
 
 
 def visible(uid):
@@ -37,17 +38,21 @@ async def search(session, uid, kind, query="", parent_id=None, offset=0, limit=8
     # SET LOCAL affects only this transaction, never the shared server configuration.
     await session.execute(text("SET LOCAL jit=off"))
     model, alias_field = KINDS[kind]
-    names = [func.catalog_normalize(model.name)]
+    raw_names = [model.name]
     if model in (Section, Route):
-        names += [func.catalog_normalize(model.name_en), func.catalog_normalize(model.name_native)]
+        raw_names += [model.name_en, model.name_native]
+    names = [func.catalog_normalize(field) for field in raw_names]
     fields = [Location.country, Location.region, Location.city]
     if model in (Section, Route):
         fields += [Location.name, Section.type]
     if model is Route:
         fields += [Section.name, Section.name_en, Section.name_native,
                    Route.grade, Route.color, Route.route_number, Route.setter]
-    fields = names + [func.catalog_normalize(field) for field in fields]
+    raw_fields = raw_names + fields
+    fields = [func.catalog_normalize(field) for field in raw_fields]
     q = await session.scalar(select(func.catalog_normalize(query)))
+    translit_q = await session.scalar(select(func.catalog_translit(query)))
+    translit_fields = [func.catalog_translit(field) for field in raw_fields]
     if query.strip() and not q:
         raise HTTPException(422, "Enter a name containing letters or digits")
     aliases = select(CatalogAlias).where(CatalogAlias.owner_id == uid,
@@ -57,7 +62,11 @@ async def search(session, uid, kind, query="", parent_id=None, offset=0, limit=8
     exact = func.coalesce(or_(*(name == q for name in names), exact_alias), False) if q else literal(False)
     alias_score = select(func.max(func.public.similarity(func.catalog_normalize(CatalogAlias.name), q))).where(
         CatalogAlias.owner_id == uid, getattr(CatalogAlias, alias_field) == model.id).correlate(model).scalar_subquery()
-    score = func.greatest(*(func.public.similarity(field, q) for field in fields), func.coalesce(alias_score, 0)) if q else literal(0.0)
+    translit_alias_score = select(func.max(func.public.similarity(func.catalog_translit(CatalogAlias.name), translit_q))).where(
+        CatalogAlias.owner_id == uid, getattr(CatalogAlias, alias_field) == model.id).correlate(model).scalar_subquery()
+    score = func.greatest(*(func.public.similarity(field, q) for field in fields),
+        *(func.public.similarity(field, translit_q) for field in translit_fields),
+        func.coalesce(alias_score, 0), func.coalesce(translit_alias_score, 0)) if q else literal(0.0)
     stmt = select(model, score.label("score"), exact.label("exact"), Location.country,
                   Location.name.label("area_name"),
                   Section.name if model is Route else literal(None)).select_from(model)
@@ -73,10 +82,12 @@ async def search(session, uid, kind, query="", parent_id=None, offset=0, limit=8
         raise HTTPException(422, "Locations have no parent")
     stmt = stmt.where(visible(uid))
     if q:
-        def matches(field):
-            return or_(field.contains(q, autoescape=True), field.op("OPERATOR(public.%)")(q))
-        stmt = stmt.where(or_(exact, *(matches(field) for field in fields), exists(
-            aliases.where(matches(func.catalog_normalize(CatalogAlias.name))))))
+        def matches(field, needle=q):
+            return or_(field.contains(needle, autoescape=True), field.op("OPERATOR(public.%)")(needle))
+        stmt = stmt.where(or_(exact, *(matches(field) for field in fields),
+            *(matches(field, translit_q) for field in translit_fields), exists(
+            aliases.where(or_(matches(func.catalog_normalize(CatalogAlias.name)),
+                              matches(func.catalog_translit(CatalogAlias.name), translit_q))))))
     stmt = stmt.order_by(exact.desc(), score.desc(), model.name, model.id).offset(offset).limit(limit+1)
     values = (await session.execute(stmt)).all()
     items = []

@@ -78,7 +78,8 @@ async def run(lane: str):
                             sent = await bot.send_document(item["chat_id"], document, caption=payload["text"][:1000])
                             result["telegram_message_id"] = sent.message_id
                         else:
-                            sent = await bot.send_message(item["chat_id"], payload["text"], reply_markup=markup)
+                            sent = await bot.send_message(item["chat_id"], payload["text"], reply_markup=markup,
+                                                          entities=payload.get("entities"))
                             result["telegram_message_id"] = sent.message_id
                     if pulse.done():
                         pulse.result()  # Do not apply a result after heartbeat failure.

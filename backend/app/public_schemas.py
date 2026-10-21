@@ -1,11 +1,18 @@
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from app.grades import normalize_grade
+from app.route_input import route_name
 
 
 class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    @field_validator("grade", mode="before", check_fields=False)
+    @classmethod
+    def canonical_grade(cls, value):
+        return normalize_grade(value) if isinstance(value, str) else value
 
 
 class Claim(Strict):
@@ -14,6 +21,7 @@ class Claim(Strict):
 
 
 class AttemptChanges(Strict):
+    _route_name = field_validator("name", mode="before")(route_name)
     region: str | None = Field(default=None, min_length=1, max_length=200)
     sector: str | None = Field(default=None, min_length=1, max_length=200)
     name: str | None = Field(default=None, min_length=1, max_length=200)
@@ -29,6 +37,7 @@ class AttemptChanges(Strict):
 
 
 class Intent(Strict):
+    _route_name = field_validator("name", mode="before")(route_name)
     kind: Literal["statistics", "attempt", "update_attempts", "delete_attempts", "clarify"]
     region: str | None = Field(default=None, min_length=1, max_length=200)
     sector: str | None = Field(default=None, min_length=1, max_length=200)
@@ -116,6 +125,7 @@ class SectionWrite(Strict):
 
 
 class RouteWrite(Strict):
+    _route_name = field_validator("name", mode="before")(route_name)
     section_id: str
     name: str = Field(min_length=1, max_length=200)
     name_en: str | None = Field(default=None, min_length=1, max_length=200)
@@ -151,6 +161,7 @@ class SummaryCreate(Strict):
 
 
 class SummaryAttempt(Strict):
+    _route_name = field_validator("name", mode="before")(route_name)
     name: str = Field(min_length=1, max_length=200)
     grade: str | None = Field(default=None, max_length=30)
     route_id: str | None = None

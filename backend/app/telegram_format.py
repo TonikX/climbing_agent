@@ -1,5 +1,28 @@
 """Pure Telegram formatter: identical output for buttons and interpreted requests."""
 import json
+import re
+
+
+def grade_table(rows):
+    cells = [(str(row['grade']).replace('\n', ' ').replace('\r', ' ')[:12],
+              str(row.get('routesCount', 0)), str(row.get('attemptsCount', 0)),
+              f"{row.get('completedRoutes', 0)} ({_percent(row.get('completionRate'))})") for row in rows]
+    headers = ('Кат.', 'Трасс', 'Поп.', 'Чисто')
+    widths = [max(len(row[i]) for row in [headers, *cells]) for i in range(4)]
+    def border(left, middle, right):
+        return left + middle.join('─' * (width + 2) for width in widths) + right
+    def line(row):
+        return '│ ' + ' │ '.join(value.ljust(widths[i]) if i == 0 else value.rjust(widths[i])
+                                  for i, value in enumerate(row)) + ' │'
+    return '\n'.join([border('┌', '┬', '┐'), line(headers), border('├', '┼', '┤'),
+                      *(line(row) for row in cells), border('└', '┴', '┘')])
+
+
+def table_entities(value):
+    """Telegram offsets are UTF-16 units, including emoji before a table."""
+    return [{'type': 'pre', 'offset': len(value[:m.start()].encode('utf-16-le')) // 2,
+             'length': len(m.group().encode('utf-16-le')) // 2}
+            for m in re.finditer(r'(?m)^[┌│├└][^\n]*(?:\n[┌│├└][^\n]*)*', value)]
 
 
 def button(text: str, data: str) -> dict:
@@ -13,10 +36,12 @@ BELAY_NAMES = {"lead": "Нижняя", "top_rope": "Верхняя", "auto_belay
 
 
 def ascent_card(item, region=None, sector=None):
+    from app.route_input import route_name
+    from app.grades import normalize_grade
     snapshot = item.route_snapshot or {}
     return (("🧪 Тестовая запись — не учитывается в статистике.\n" if item.is_test else "") +
             f"Регион: {region or 'Не указан'}\nСектор: {sector or 'Не указан'}\n"
-            f"Название трассы: {snapshot.get('name') or 'Не указано'}\nКатегория: {snapshot.get('grade') or 'Не указана'}\n"
+            f"Название трассы: {route_name(snapshot.get('name')) or 'Не указано'}\nКатегория: {normalize_grade(snapshot.get('grade')) or 'Не указана'}\n"
             f"Чисто: {'Да' if item.clean_ascent is True else 'Нет'}\n"
             f"Стиль: {STYLE_NAMES.get(item.style, item.style)}\n"
             f"Страховка: {BELAY_NAMES.get(item.belay, item.belay)}")
@@ -136,10 +161,7 @@ def statistics(dto: dict) -> str:
         lines.append("Изменение: " + comparison)
     grades = dto.get("grades", [])
     if grades:
-        lines.append("\nКатегория | трасс | попыток | чисто")
-        for row in grades:
-            lines.append(f"{row['grade']} | {row.get('routesCount', 0)} | {row.get('attemptsCount', 0)} | "
-                         f"{row.get('completedRoutes', 0)} ({_percent(row.get('completionRate'))})")
+        lines.append("\nПо категориям\n" + grade_table(grades))
     for row in dto.get("locations", []):
         lines.append(f"\n📍 {(row.get('location') or {}).get('name') or 'Без локации'}: "
                      f"{row.get('trainingsCount', 0)} трен. · {row.get('routesCount', 0)} трасс · "
