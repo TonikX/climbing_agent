@@ -932,6 +932,50 @@ function App() {
                             />
                           </div>
                         )}
+                      {!advanced &&
+                        (page === "overview" || page === "progress") && (
+                          <section className="panel">
+                            <div className="section-heading">
+                              <div>
+                                <h2>Пролазы по категориям</h2>
+                                <p>
+                                  Выходы на трассы и чистые прохождения за
+                                  выбранный период
+                                </p>
+                              </div>
+                            </div>
+                            {!data?.grades.length ? (
+                              <p className="empty">
+                                За выбранный период пролазов нет.
+                              </p>
+                            ) : (
+                              <div className="table-wrap">
+                                <table>
+                                  <thead>
+                                    <tr>
+                                      <th scope="col">Категория</th>
+                                      <th scope="col">Всего</th>
+                                      <th scope="col">Чисто</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {data.grades.map((g) => (
+                                      <tr key={g.grade}>
+                                        <td>
+                                          <span className="grade-chip">
+                                            {g.grade}
+                                          </span>
+                                        </td>
+                                        <td>{g.routesCount ?? 0}</td>
+                                        <td>{g.completedRoutes ?? 0}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </section>
+                        )}
                       {!advanced && page === "progress" && (
                         <section className="panel">
                           <div className="section-heading">
