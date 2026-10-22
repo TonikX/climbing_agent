@@ -8,10 +8,7 @@ from app.public_models import DialogState
 from app.telegram_format import button, menu
 from app.tool_service import _active, execute_tool
 
-FIELDS = {"region": "Регион", "sector": "Сектор", "name": "Название трассы", "grade": "Категория",
-          "reached_top": "Дошёл до конца: да или нет",
-          "clean_ascent": "Чисто: да или нет", "style": "Стиль: onsight / flash / redpoint / со срывом / с зависанием",
-          "belay": "Страховка: нижняя / верхняя / автостраховка / боулдеринг"}
+from app.attempt_fields import FIELDS, missing_fields
 
 
 def clear_inferred(facts):
@@ -117,8 +114,7 @@ async def complete_facts(session, user, job, training, facts, reply, browse=Fals
         facts["style"] = "with_hangs"
     elif facts.get("style") in ("onsight", "flash", "redpoint") and facts.get("clean_ascent") is False:
         facts.pop("style")
-    missing = [label for key, label in FIELDS.items() if facts.get(key) is None or
-               facts.get(key) == "" or (facts.get(key) == "unknown" and (key == "belay" or not facts.get("manual")))]
+    missing = [FIELDS[key] for key in missing_fields(facts)]
     if missing:
         await dialog_set(session, user.id, "attempt_missing", {"form": "attempt_capture", "training_id": training.id,
                          "token": job.id, "facts": facts})
