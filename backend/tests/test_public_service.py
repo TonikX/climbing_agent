@@ -20,6 +20,56 @@ def record_intent(**values):
 
 
 class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_change_training_date_buttons_validation_and_ownership(self):
+        from datetime import date
+        await self.login('2')
+        await self.login('3')
+        await self.send('2', 'training:start', True)
+        await self.process()
+        await self.send('2', 'Трасса 6A')
+        await self.process('ai', record_intent(name='Трасса', grade='6A'))
+        ai_count = await self.conn.scalar(select(func.count(Job.id)).where(Job.lane=='ai'))
+        tid, version, original = (await self.conn.execute(select(TrainingSession.id, TrainingSession.version, TrainingSession.local_date))).one()
+        await self.send('2', 'training:details:current', True)
+        await self.process()
+        payload = await self.conn.scalar(select(Outbox.payload).order_by(Outbox.sequence.desc()).limit(1))
+        command = f'td:{tid}:{version}'
+        self.assertTrue(any(b['callback_data']==command for row in payload['reply_markup']['inline_keyboard'] for b in row))
+        await self.send('3', command, True)
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(TrainingSession.local_date)), original)
+        await self.send('2', command, True)
+        await self.process()
+        await self.send('2', '31.02.2026')
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(TrainingSession.local_date)), original)
+        self.assertEqual(await self.conn.scalar(select(DialogState.state)), 'training_date')
+        await self.send('2', '01.09.2026')
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(TrainingSession.local_date)), date(2026,9,1))
+        # An old button must not overwrite a newer version.
+        await self.send('2', command, True)
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(DialogState.state)), 'training_selected')
+        await self.send('2', 'training:finish', True)
+        await self.process()
+        before = (await self.conn.execute(select(TrainingSession.status, TrainingSession.started_at, TrainingSession.completed_at, TrainingSession.duration_minutes))).one()
+        version = await self.conn.scalar(select(TrainingSession.version))
+        await self.send('2', 'tr:'+tid, True)
+        await self.process()
+        payload = await self.conn.scalar(select(Outbox.payload).order_by(Outbox.sequence.desc()).limit(1))
+        command = f'td:{tid}:{version}'
+        self.assertTrue(any(b['callback_data']==command for row in payload['reply_markup']['inline_keyboard'] for b in row))
+        await self.send('2', command, True)
+        await self.process()
+        await self.send('2', '2026-08-31')
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(TrainingSession.local_date)), date(2026,8,31))
+        after = (await self.conn.execute(select(TrainingSession.status, TrainingSession.started_at, TrainingSession.completed_at, TrainingSession.duration_minutes))).one()
+        self.assertEqual(before, after)
+        self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))), 1)
+        self.assertEqual(await self.conn.scalar(select(func.count(Job.id)).where(Job.lane=='ai')), ai_count)
+
     asyncSetUpBase = auth_tests.AuthPostgresTest.asyncSetUp
     asyncTearDownBase = auth_tests.AuthPostgresTest.asyncTearDown
     login = auth_tests.AuthPostgresTest.login

@@ -129,7 +129,7 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
                     await dialog_set(session, user.id, "training_selected", {"form": "attempt_manage",
                         "training_id": training.id, "version": training.version, "ids": []})
                 location = await place(session, training)
-                heading = "🧗 Текущая тренировка\nРегион: " + (location["region"] or "Не указан") + "\nСектор: " + (location["sector"] or "Не указан")
+                heading = f"🧗 Текущая тренировка · {training.local_date:%d.%m.%Y}\nРегион: " + (location["region"] or "Не указан") + "\nСектор: " + (location["sector"] or "Не указан")
                 records = sorted(training.attempts, key=lambda x: x.sequence)
                 keyboard = [[button(f"✏️ №{x.sequence} · {x.route_snapshot.get('name') or 'Трасса'}"[:80], "am:pick:"+x.id)] for x in records[:15]]
                 if len(records) > 15:
@@ -137,6 +137,7 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
                 keyboard.extend([[button("💬 Записать пролаз", "attempt:ai")],
                     [button("📚 Выбрать трассу из БД", "catalog:choose")],
                     [button("📍 Место тренировки", "training:location")],
+                    [button("📅 Изменить дату", f"td:{training.id}:{training.version}")],
                     [button("Завершить тренировку", "training:finish")], [button("← Главное меню", "journal")]])
                 chunks = attempts(dto)
                 for i, chunk in enumerate(chunks):

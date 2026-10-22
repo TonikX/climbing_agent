@@ -1,7 +1,7 @@
 """Owned, versioned attempt mutations shared by Telegram and the public API."""
 import hashlib
 import secrets
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -186,6 +186,39 @@ async def handle(session, user, job, reply):
     if job.lane == "ai":
         return False
     dialog = await session.get(DialogState, user.id)
+    if command.startswith("td:"):
+        parts = command.split(":")
+        if len(parts) != 3 or not parts[2].isdigit():
+            raise HTTPException(422, "Invalid training version")
+        _, tid, version = parts
+        training = await locked_training(session, user.id, tid, int(version))
+        await dialog_set(session, user.id, "training_date", {"form":"training_date", "training_id":tid,
+            "version":training.version})
+        await reply(session, job, f"Текущая дата: {training.local_date:%d.%m.%Y}.\nВведите новую дату: ДД.ММ.ГГГГ или ГГГГ-ММ-ДД.",
+                    [[button("Отмена", "tr:"+tid)]])
+        return True
+    if dialog and dialog.data.get("form") == "training_date" and (command == "/cancel" or
+            (not command.startswith("/") and ":" not in command and command not in ("journal", "profile"))):
+        tid = dialog.data["training_id"]
+        if command == "/cancel" or dialog.created_at < now()-timedelta(minutes=5):
+            await session.delete(dialog)
+            await reply(session, job, "Изменение даты отменено.", [[button("← Тренировка", "tr:"+tid)]])
+            return True
+        try:
+            value = command.strip()
+            new_date = datetime.strptime(value, "%d.%m.%Y").date() if "." in value else date.fromisoformat(value)
+        except ValueError:
+            await reply(session, job, "Некорректная дата. Введите ДД.ММ.ГГГГ или ГГГГ-ММ-ДД.",
+                        [[button("Отмена", "tr:"+tid)]])
+            return True
+        training = await locked_training(session, user.id, tid, dialog.data["version"])
+        training.local_date = new_date
+        training.version += 1
+        await dialog_set(session, user.id, "training_selected", {"form":"attempt_manage", "training_id":tid,
+            "version":training.version, "ids":[]})
+        await reply(session, job, f"Дата тренировки изменена: {new_date:%d.%m.%Y}.",
+                    [[button("← Тренировка", "tr:"+tid)]])
+        return True
     if command.startswith(("trainings:", "trainings-test:")):
         include_test = command.startswith("trainings-test:")
         prefix = "trainings-test:" if include_test else "trainings:"
@@ -393,6 +426,7 @@ async def attempt_list(session, uid, job, training, start, reply):
         latest = await training_for(session, uid, "last")
         if latest and latest.id == training.id:
             keyboard.append([button("↩️ Возобновить тренировку", "training:resume")])
-    keyboard.extend([[button("🗑 Выбрать несколько для удаления","am:select")],
+    keyboard.extend([[button("📅 Изменить дату",f"td:{training.id}:{training.version}")],
+                     [button("🗑 Выбрать несколько для удаления","am:select")],
                      [button("← Выбрать другую тренировку","trainings:0")]])
     await reply(session,job,overview+"\n\nВыберите пролаз для изменения или опишите изменения через LLM.",keyboard)
