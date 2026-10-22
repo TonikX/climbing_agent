@@ -11,7 +11,7 @@ from app.attempt_outcome import outcome, normalized_style
 from app.models import Location, Section, RouteAttempt, TrainingSession, User
 from app.public_models import DialogState
 from app.public_schemas import AttemptChanges
-from app.telegram_format import button, menu, ascent_card, summary, STYLE_NAMES, BELAY_NAMES
+from app.telegram_format import button, menu, ascent_card, summary, STYLE_NAMES, BELAY_NAMES, active_training_actions
 from app.jobs import now
 
 
@@ -217,6 +217,8 @@ async def handle(session, user, job, reply):
         await dialog_set(session, user.id, "training_selected", {"form":"attempt_manage", "training_id":tid,
             "version":training.version, "ids":[]})
         await reply(session, job, f"Дата тренировки изменена: {new_date:%d.%m.%Y}.",
+                    [[button("🧗 Текущая тренировка", "training:details:current")],
+                     *active_training_actions(training)] if training.status == "active" else
                     [[button("← Тренировка", "tr:"+tid)]])
         return True
     if command.startswith(("trainings:", "trainings-test:")):
@@ -436,7 +438,10 @@ async def attempt_list(session, uid, job, training, start, reply):
         latest = await training_for(session, uid, "last")
         if latest and latest.id == training.id:
             keyboard.append([button("↩️ Возобновить тренировку", "training:resume")])
-    keyboard.extend([[button("📅 Изменить дату",f"td:{training.id}:{training.version}")],
-                     [button("🗑 Выбрать несколько для удаления","am:select")],
+    if training.status == "active":
+        keyboard.extend(active_training_actions(training))
+    else:
+        keyboard.append([button("📅 Изменить дату",f"td:{training.id}:{training.version}")])
+    keyboard.extend([[button("🗑 Выбрать несколько для удаления","am:select")],
                      [button("← Выбрать другую тренировку","trainings:0")]])
     await reply(session,job,overview+"\n\nВыберите пролаз для изменения или опишите изменения через LLM.",keyboard)

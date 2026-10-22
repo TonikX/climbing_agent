@@ -20,6 +20,42 @@ def record_intent(**values):
 
 
 class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_backdated_active_training_keeps_menu_and_accepts_attempts(self):
+        from datetime import date
+        await self.login('2')
+        await self.send('2', 'training:start', True)
+        await self.process()
+        tid, version = (await self.conn.execute(select(TrainingSession.id, TrainingSession.version))).one()
+        await self.send('2', f'td:{tid}:{version}', True)
+        await self.process()
+        await self.send('2', '01.09.2026')
+        await self.process()
+        expected = {'attempt:ai', 'catalog:choose', 'training:location', 'training:finish', 'journal'}
+        for command in (None, 'training:details:current', 'tr:'+tid):
+            if command:
+                await self.send('2', command, True)
+                await self.process()
+            payload = await self.conn.scalar(select(Outbox.payload).order_by(Outbox.sequence.desc()).limit(1))
+            callbacks = {b['callback_data'] for row in payload['reply_markup']['inline_keyboard'] for b in row}
+            self.assertTrue(expected <= callbacks)
+            self.assertIn(f'td:{tid}:{version+1}', callbacks)
+        self.assertEqual(await self.conn.scalar(select(func.count(Job.id)).where(Job.lane=='ai')), 0)
+        await self.send('2', 'attempt:ai', True)
+        await self.process()
+        await self.send('2', 'Новая трасса 6A')
+        await self.process('ai', record_intent(name='Новая трасса', grade='6A'))
+        self.assertEqual(await self.conn.scalar(select(RouteAttempt.training_id)), tid)
+        self.assertEqual((await self.conn.execute(select(TrainingSession.id, TrainingSession.status,
+            TrainingSession.local_date))).one(), (tid, 'active', date(2026,9,1)))
+        await self.send('2', 'training:finish', True)
+        await self.process()
+        self.assertEqual(await self.conn.scalar(select(TrainingSession.status)), 'completed')
+        await self.send('2', 'tr:'+tid, True)
+        await self.process()
+        payload = await self.conn.scalar(select(Outbox.payload).order_by(Outbox.sequence.desc()).limit(1))
+        callbacks = {b['callback_data'] for row in payload['reply_markup']['inline_keyboard'] for b in row}
+        self.assertFalse({'attempt:ai', 'catalog:choose', 'training:finish'} & callbacks)
+
     async def test_training_list_labels_include_all_used_sectors_and_empty_fallback(self):
         await self.login('2')
         await self.send('2', 'training:start', True)

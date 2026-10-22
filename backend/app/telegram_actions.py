@@ -12,7 +12,7 @@ from app.db import set_user_context
 from app.models import ExternalRef, Gear, Location, TrainingSession, User
 from app.public_models import AccessRequest, DeletionRecord, Job, Outbox, Usage, TelegramUpdate
 from app.public_schemas import Intent
-from app.telegram_format import attempts, button, menu, reply_menu, statistics, stats_menu, table_entities
+from app.telegram_format import attempts, button, menu, reply_menu, statistics, stats_menu, table_entities, active_training_actions
 from app.tool_service import _active, _get_current, _get_trainings, _statistics, execute_tool, _gear_dict
 from app.auth import user_payload
 from app.jobs import now
@@ -134,11 +134,7 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
                 keyboard = [[button(f"✏️ №{x.sequence} · {x.route_snapshot.get('name') or 'Трасса'}"[:80], "am:pick:"+x.id)] for x in records[:15]]
                 if len(records) > 15:
                     keyboard.append([button("Другие попытки", "attempts:current:0")])
-                keyboard.extend([[button("💬 Записать пролаз", "attempt:ai")],
-                    [button("📚 Выбрать трассу из БД", "catalog:choose")],
-                    [button("📍 Место тренировки", "training:location")],
-                    [button("📅 Изменить дату", f"td:{training.id}:{training.version}")],
-                    [button("Завершить тренировку", "training:finish")], [button("← Главное меню", "journal")]])
+                keyboard.extend(active_training_actions(training))
                 chunks = attempts(dto)
                 for i, chunk in enumerate(chunks):
                     await reply(session, job, (heading+"\n\n" if i == 0 else "")+chunk,

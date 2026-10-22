@@ -29,6 +29,15 @@ def button(text: str, data: str) -> dict:
     return {"text": text, "callback_data": data}
 
 
+def active_training_actions(training) -> list:
+    return [[button("💬 Записать пролаз", "attempt:ai")],
+            [button("📚 Выбрать трассу из БД", "catalog:choose")],
+            [button("📍 Место тренировки", "training:location")],
+            [button("📅 Изменить дату", f"td:{training.id}:{training.version}")],
+            [button("Завершить тренировку", "training:finish")],
+            [button("← Главное меню", "journal")]]
+
+
 STYLE_NAMES = {"onsight": "Onsight", "flash": "Flash", "redpoint": "Red Point",
                "with_falls": "Со срывом", "with_hangs": "С зависанием", "top_rope": "Верхняя", "unknown": "Не указан"}
 BELAY_NAMES = {"lead": "Нижняя", "top_rope": "Верхняя", "auto_belay": "Автостраховка",
