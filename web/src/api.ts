@@ -38,11 +38,22 @@ export type Training = {
   duration_minutes: number | null;
   notes: string | null;
   attempts: Attempt[];
+  locations?: Place[];
+  sectors?: string[];
+  grades?: string[];
   demoLocation?: string;
   demoSector?: string;
 };
 export type User = { name: string; timezone: string; status: string };
-export type Filters = { from: string; to: string; grade: string };
+export type Place = { id: string; name: string; region: string | null };
+export type PlaceFilters = { regions: string[]; areas: Place[] };
+export type Filters = {
+  from: string;
+  to: string;
+  grade: string;
+  region: string;
+  areaId: string;
+};
 export class ApiError extends Error {
   constructor(public status: number) {
     super(
@@ -80,6 +91,8 @@ export type BrowserSession = {
 export function query(f: Filters) {
   const q = new URLSearchParams({ date_from: f.from, date_to: f.to });
   if (f.grade) q.set("grade", f.grade);
+  if (f.region) q.set("region", f.region);
+  if (f.areaId) q.set("area_id", f.areaId);
   return q;
 }
 export async function dashboard(f: Filters, signal: AbortSignal) {
@@ -94,9 +107,14 @@ export async function dashboard(f: Filters, signal: AbortSignal) {
     periods: progress.periods ?? [],
   };
 }
-export const trainingPage = (cursor: string | null, signal: AbortSignal) =>
+export const trainingPage = (
+  filters: Filters,
+  cursor: string | null,
+  signal: AbortSignal,
+) =>
   request<{ items: Training[]; next_cursor: string | null }>(
-    "/trainings?include_test=false&limit=12" +
+    "/trainings?include_test=false&limit=12&" +
+      query(filters) +
       (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""),
     signal,
   );

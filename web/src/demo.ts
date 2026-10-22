@@ -69,6 +69,9 @@ export const trainings: Training[] = [
   notes: null,
   demoLocation: "Гейкбаири",
   demoSector: ["Мағара", "Кебап", "Требенна"][i],
+  locations: [{ id: "demo-geyikbayiri", name: "Гейкбаири", region: "Анталья" }],
+  sectors: [["Мағара", "Кебап", "Требенна"][i]],
+  grades: ["6A+", "6B+"],
   attempts: [
     {
       id: "a" + i,

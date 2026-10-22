@@ -331,6 +331,40 @@ h1 {
   padding: 10px 6px;
   max-width: 126px;
 }
+.place-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+  align-items: end;
+}
+.place-filters label {
+  display: flex;
+  flex: 1 1 180px;
+  max-width: 320px;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  color: #687969;
+}
+.place-filters select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #e3e8dd;
+  border-radius: 7px;
+  background: white;
+  color: #304b39;
+  font: inherit;
+}
+.training-name > .training-grades {
+  color: #587845;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.training-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .kpis {
   display: grid;
   grid-template-columns: repeat(5, 1fr);

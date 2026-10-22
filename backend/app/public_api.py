@@ -332,6 +332,12 @@ async def retention(session: Control):
     return {"ok": True}
 
 
+@router.get("/training-filters")
+async def training_filters(session: Session, uid: UserId):
+    from app.training_places import filter_options
+    return await filter_options(session, uid)
+
+
 @router.get("/trainings/current")
 async def current_training(session: Session, uid: UserId, detail: Literal["summary", "full"] = "summary"):
     return await TrainingService.current(session, {"user": {"id": uid}, "detail": detail})
@@ -347,6 +353,11 @@ async def training(training_id: str, session: Session, uid: UserId, include_test
     dto = TrainingResponse.model_validate(item).model_dump(mode="json")
     if not include_test:
         dto["attempts"] = [x for x in dto["attempts"] if not x["is_test"]]
+    from app.training_places import enrich_trainings
+    from types import SimpleNamespace
+    visible = SimpleNamespace(id=item.id, primary_location_id=item.primary_location_id,
+        attempts=[a for a in item.attempts if include_test or not a.is_test])
+    dto.update((await enrich_trainings(session, [visible]))[item.id])
     return dto
 
 
@@ -363,8 +374,11 @@ async def current_statistics(session: Session, uid: UserId):
 @router.get("/statistics/{scope}", response_model=StatisticsDTO, response_model_exclude_unset=True)
 async def stats(scope: Literal["week", "month", "progress", "grades", "locations", "projects", "records"],
                 session: Session, uid: UserId, date_from: str | None = None, date_to: str | None = None,
-                grade: str | None = Query(default=None, max_length=30)):
-    return await StatisticsService.read(session, {"user": {"id": uid}, "scope": scope, "dateFrom": date_from, "dateTo": date_to, "grade": grade})
+                grade: str | None = Query(default=None, max_length=30),
+                region: str | None = Query(default=None, max_length=200),
+                area_id: str | None = Query(default=None, max_length=200)):
+    return await StatisticsService.read(session, {"user": {"id": uid}, "scope": scope, "dateFrom": date_from, "dateTo": date_to, "grade": grade,
+        "region": region, "areaId": area_id})
 
 
 async def versioned_training(session, uid, training_id, expected):

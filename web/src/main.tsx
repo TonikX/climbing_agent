@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AreaChart,
@@ -38,6 +38,7 @@ import {
   type Period,
   type User,
   type BrowserSession,
+  type PlaceFilters,
 } from "./api";
 import * as demo from "./demo";
 import "./style.css";
@@ -72,6 +73,20 @@ const labels: Record<string, string> = {
   unknown: "Не указано",
 };
 const label = (v: string) => labels[v] ?? v;
+const trainingPlace = (t: Training) =>
+  t.locations?.map((p) => p.name).join(" · ") ||
+  t.demoLocation ||
+  "Место не указано";
+const trainingContext = (t: Training) => {
+  const regions = [
+    ...new Set(t.locations?.map((p) => p.region).filter(Boolean)),
+  ].join(", ");
+  const sectors = t.sectors?.join(", ") || t.demoSector;
+  return (
+    [regions, sectors && `Секторы: ${sectors}`].filter(Boolean).join(" · ") ||
+    "Регион и сектор не указаны"
+  );
+};
 function App() {
   const params = new URLSearchParams(location.search);
   const [isDemo, setDemo] = useState(params.get("demo") === "1");
@@ -89,6 +104,8 @@ function App() {
       iso(new Date(today.getFullYear(), today.getMonth(), 1)),
     to: params.get("to") || iso(today),
     grade: params.get("grade") || "",
+    region: params.get("region") || "",
+    areaId: params.get("area_id") || "",
   });
   const [preset, setPreset] = useState("month");
   const [mobile, setMobile] = useState(false);
@@ -114,6 +131,11 @@ function App() {
   const [moreBusy, setMoreBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [retry, setRetry] = useState(0);
+  const [places, setPlaces] = useState<PlaceFilters>({
+    regions: [],
+    areas: [],
+  });
+  const generation = useRef(0);
   useEffect(() => {
     if (isDemo) return;
     const ac = new AbortController();
@@ -126,10 +148,15 @@ function App() {
     const q = new URLSearchParams({ page, from: filters.from, to: filters.to });
     if (isDemo) q.set("demo", "1");
     if (filters.grade) q.set("grade", filters.grade);
+    if (filters.region) q.set("region", filters.region);
+    if (filters.areaId) q.set("area_id", filters.areaId);
     history.replaceState(null, "", "?" + q);
   }, [page, filters, isDemo]);
   useEffect(() => {
     const ac = new AbortController();
+    generation.current += 1;
+    setMoreBusy(false);
+    setCursor(null);
     setBusy(true);
     setError(null);
     setSelected(null);
@@ -155,9 +182,10 @@ function App() {
     }
     request<BrowserSession>("/auth/session", ac.signal)
       .then(async (auth) => {
-        const [d, t] = await Promise.all([
+        const [d, t, options] = await Promise.all([
           dashboard(filters, ac.signal),
-          trainingPage(null, ac.signal),
+          trainingPage(filters, null, ac.signal),
+          request<PlaceFilters>("/training-filters", ac.signal),
         ]);
         if (ac.signal.aborted) return;
         setUser(auth.user);
@@ -165,6 +193,7 @@ function App() {
         setData(d);
         setTrainings(t.items);
         setCursor(t.next_cursor);
+        setPlaces(options);
       })
       .catch((e) => {
         if (e.name !== "AbortError") setError(e);
@@ -213,15 +242,22 @@ function App() {
   }
   async function loadMore() {
     if (!cursor) return;
+    const currentGeneration = generation.current;
     setMoreBusy(true);
     try {
-      const t = await trainingPage(cursor, new AbortController().signal);
+      const t = await trainingPage(
+        filters,
+        cursor,
+        new AbortController().signal,
+      );
+      if (currentGeneration !== generation.current) return;
       setTrainings((v) => [...v, ...t.items]);
       setCursor(t.next_cursor);
     } catch (e) {
+      if (currentGeneration !== generation.current) return;
       setError(e as Error);
     } finally {
-      setMoreBusy(false);
+      if (currentGeneration === generation.current) setMoreBusy(false);
     }
   }
   const s = data?.summary;
@@ -488,6 +524,64 @@ function App() {
                       </select>
                     </label>
                   </div>
+                  <div className="place-filters">
+                    <label>
+                      <span>Регион</span>
+                      <select
+                        disabled={isDemo}
+                        value={filters.region}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            region: e.target.value,
+                            areaId: "",
+                          })
+                        }
+                      >
+                        <option value="">Все регионы</option>
+                        {places.regions.map((region) => (
+                          <option key={region} value={region}>
+                            {region}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>Район</span>
+                      <select
+                        disabled={isDemo}
+                        value={filters.areaId}
+                        onChange={(e) =>
+                          setFilters({ ...filters, areaId: e.target.value })
+                        }
+                      >
+                        <option value="">Все районы</option>
+                        {places.areas
+                          .filter(
+                            (area) =>
+                              !filters.region || area.region === filters.region,
+                          )
+                          .map((area) => (
+                            <option key={area.id} value={area.id}>
+                              {area.name}
+                              {!filters.region && area.region
+                                ? ` · ${area.region}`
+                                : ""}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    {(filters.region || filters.areaId) && (
+                      <button
+                        className="text-button"
+                        onClick={() =>
+                          setFilters({ ...filters, region: "", areaId: "" })
+                        }
+                      >
+                        Сбросить место
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
               {busy ? (
@@ -515,13 +609,11 @@ function App() {
                       <div className="section-heading">
                         <div>
                           <h2>
-                            {selected.demoLocation ?? "Тренировка"} ·{" "}
+                            {trainingPlace(selected)} ·{" "}
                             {date(selected.local_date)}
                           </h2>
                           <p>
-                            {selected.demoSector ??
-                              "Места указаны в данных попыток"}{" "}
-                            ·{" "}
+                            {trainingContext(selected)} ·{" "}
                             {selected.duration_minutes === null
                               ? "Длительность не указана"
                               : selected.duration_minutes + " мин"}
@@ -889,8 +981,8 @@ function App() {
                                   : "Журнал тренировок"}
                               </h2>
                               <p>
-                                История всех дат · фильтры выше относятся к
-                                статистике
+                                За выбранный период · с учётом региона, района и
+                                категории
                               </p>
                             </div>
                             {page === "overview" && (
@@ -904,8 +996,7 @@ function App() {
                           </div>
                           {trainings.length === 0 ? (
                             <p className="empty">
-                              Тренировок пока нет. Первую можно записать в
-                              Telegram.
+                              По выбранным фильтрам тренировок нет.
                             </p>
                           ) : (
                             (page === "overview"
@@ -929,15 +1020,13 @@ function App() {
                                   </small>
                                 </span>
                                 <div className="training-name">
-                                  <strong>
-                                    {t.demoLocation ??
-                                      (t.environment === "outdoor"
-                                        ? "Тренировка на скалах"
-                                        : "Тренировка")}
-                                  </strong>
-                                  <span>
-                                    {t.demoSector ??
-                                      "Открыть попытки и характеристики"}
+                                  <strong>{trainingPlace(t)}</strong>
+                                  <span>{trainingContext(t)}</span>
+                                  <span className="training-grades">
+                                    Категории:{" "}
+                                    {t.grades?.length
+                                      ? t.grades.join(" · ")
+                                      : "не указаны"}
                                   </span>
                                 </div>
                                 <span className="training-duration">

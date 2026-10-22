@@ -707,14 +707,22 @@ async def _set_test_mode(session: AsyncSession, p: dict[str, Any]) -> dict[str, 
 
 
 async def _statistics_rows(session: AsyncSession, user_id: str, start: date | None,
-                           end: date | None) -> list[tuple[TrainingSession, RouteAttempt]]:
+                           end: date | None, *, region=None, area_id=None) -> list[tuple[TrainingSession, RouteAttempt]]:
     query = select(TrainingSession).options(
         selectinload(TrainingSession.attempts).selectinload(RouteAttempt.route)).where(
         TrainingSession.user_id == user_id)
     if start: query = query.where(TrainingSession.local_date >= start)
     if end: query = query.where(TrainingSession.local_date <= end)
     trainings = list((await session.scalars(query)).unique().all())
-    return [(training, attempt) for training in trainings for attempt in training.attempts if not attempt.is_test]
+    matching = None
+    if (region or area_id) and trainings:
+        from app.training_places import attempt_filters
+        matching = set((await session.scalars(select(RouteAttempt.id).join(TrainingSession).where(
+            TrainingSession.user_id == user_id,
+            TrainingSession.id.in_([item.id for item in trainings]),
+            attempt_filters(region=region, area_id=area_id)))).all())
+    return [(training, attempt) for training in trainings for attempt in training.attempts
+            if not attempt.is_test and (matching is None or attempt.id in matching)]
 
 
 def _filter_statistics_rows(rows, p: dict[str, Any]):
@@ -768,7 +776,8 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
         if p.get("detail") == "full":
             result["training"]["routes"] = _route_groups(training, attempts)
         return result
-    rows = _filter_statistics_rows(await _statistics_rows(session, user.id, start, end), p)
+    places = {"region": p.get("region"), "area_id": p.get("areaId")}
+    rows = _filter_statistics_rows(await _statistics_rows(session, user.id, start, end, **places), p)
     attempts = [attempt for _, attempt in rows]
     result = {"scope": scope, "dateFrom": start.isoformat() if start else None,
               "dateTo": end.isoformat() if end else None,
@@ -777,7 +786,7 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
         result["grade"] = p["grade"]
     if previous_start and previous_end:
         previous_rows = _filter_statistics_rows(
-            await _statistics_rows(session, user.id, previous_start, previous_end), p)
+            await _statistics_rows(session, user.id, previous_start, previous_end, **places), p)
         result["previousPeriod"] = {
             "dateFrom": previous_start.isoformat(), "dateTo": previous_end.isoformat(),
             **_period_summary(previous_rows),

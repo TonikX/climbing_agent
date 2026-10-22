@@ -1,4 +1,5 @@
 from typing import Annotated
+from datetime import date
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from sqlalchemy import delete, select, text
@@ -157,9 +158,17 @@ async def list_trainings_endpoint(
     include_test: bool = Query(default=False),
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    region: str | None = Query(default=None, max_length=200),
+    area_id: str | None = Query(default=None, max_length=200),
+    grade: str | None = Query(default=None, max_length=30),
 ) -> TrainingPage:
-    rows = await list_trainings(session, user_id, include_test=include_test, cursor=cursor, limit=limit+1)
-    return TrainingPage(items=[TrainingResponse.model_validate(item) for item in rows[:limit]],
+    from app.training_places import enrich_trainings
+    rows = await list_trainings(session, user_id, include_test=include_test, cursor=cursor, limit=limit+1,
+        date_from=date_from, date_to=date_to, region=region, area_id=area_id, grade=grade)
+    extra = await enrich_trainings(session, rows[:limit])
+    return TrainingPage(items=[TrainingResponse.model_validate({**TrainingResponse.model_validate(item).model_dump(), **extra[item.id]}) for item in rows[:limit]],
                         next_cursor=rows[limit-1].id if len(rows)>limit else None)
 
 

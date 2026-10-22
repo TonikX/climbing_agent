@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy import select, tuple_
@@ -67,9 +67,22 @@ async def start_training(session: AsyncSession, user_id: str, command: TrainingC
     return training
 
 async def list_trainings(
-    session: AsyncSession, user_id: str, include_test: bool = False, cursor: str | None = None, limit: int = 50
+    session: AsyncSession, user_id: str, include_test: bool = False, cursor: str | None = None, limit: int = 50,
+    date_from: date | None = None, date_to: date | None = None, region: str | None = None,
+    area_id: str | None = None, grade: str | None = None,
 ) -> list[TrainingSession]:
     query = select(TrainingSession).options(selectinload(TrainingSession.attempts))
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(422, "date_from must not be after date_to")
+    if date_from:
+        query = query.where(TrainingSession.local_date >= date_from)
+    if date_to:
+        query = query.where(TrainingSession.local_date <= date_to)
+    if region or area_id or grade:
+        from app.training_places import attempt_filters
+        matching = select(RouteAttempt.id).where(RouteAttempt.training_id == TrainingSession.id,
+            attempt_filters(region=region, area_id=area_id, grade=grade, include_test=include_test)).correlate(TrainingSession).exists()
+        query = query.where(matching)
     if cursor:
         anchor = await session.scalar(select(TrainingSession).where(TrainingSession.id == cursor, TrainingSession.user_id == user_id))
         if not anchor:

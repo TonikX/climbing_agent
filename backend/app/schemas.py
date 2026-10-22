@@ -116,6 +116,12 @@ class AttemptResponse(BaseModel):
     route_snapshot: dict
 
 
+class TrainingLocation(BaseModel):
+    id: str
+    name: str
+    region: str | None = None
+
+
 class TrainingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -131,6 +137,9 @@ class TrainingResponse(BaseModel):
     created_at: datetime
     completed_at: datetime | None
     attempts: list[AttemptResponse] = Field(default_factory=list)
+    locations: list[TrainingLocation] = Field(default_factory=list)
+    sectors: list[str] = Field(default_factory=list)
+    grades: list[str] = Field(default_factory=list)
 
 
 class ToolCommand(BaseModel):

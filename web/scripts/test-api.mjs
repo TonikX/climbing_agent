@@ -36,7 +36,13 @@ test("dashboard reads flat DTO, passes filters and cookies without a bearer key"
   };
   try {
     const result = await api.dashboard(
-      { from: "2026-10-01", to: "2026-10-22", grade: "6B+" },
+      {
+        from: "2026-10-01",
+        to: "2026-10-22",
+        grade: "6B+",
+        region: "Анталья",
+        areaId: "area-geyik",
+      },
       new AbortController().signal,
     );
     assert.equal(result.summary.routesCount, 4);
@@ -49,7 +55,45 @@ test("dashboard reads flat DTO, passes filters and cookies without a bearer key"
       const q = new URL(url, "http://localhost").searchParams;
       assert.equal(q.get("grade"), "6B+");
       assert.equal(q.get("date_from"), "2026-10-01");
+      assert.equal(q.get("region"), "Анталья");
+      assert.equal(q.get("area_id"), "area-geyik");
     }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("training pagination preserves period, grade and place filters", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(url, "http://localhost");
+    assert.equal(parsed.pathname, "/api/v1/trainings");
+    const q = parsed.searchParams;
+    for (const [key, value] of Object.entries({
+      date_from: "2026-01-01",
+      date_to: "2026-10-22",
+      grade: "6A",
+      region: "Анталья",
+      area_id: "area-geyik",
+      cursor: "training:test",
+      include_test: "false",
+    })) {
+      assert.equal(q.get(key), value);
+    }
+    return new Response(JSON.stringify({ items: [], next_cursor: null }));
+  };
+  try {
+    await api.trainingPage(
+      {
+        from: "2026-01-01",
+        to: "2026-10-22",
+        grade: "6A",
+        region: "Анталья",
+        areaId: "area-geyik",
+      },
+      "training:test",
+      new AbortController().signal,
+    );
   } finally {
     globalThis.fetch = original;
   }
