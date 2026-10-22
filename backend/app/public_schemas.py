@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.grades import normalize_grade
 from app.route_input import route_name
+from app.schemas import AttemptResponse
 
 
 class Strict(BaseModel):
@@ -211,3 +212,36 @@ class StatisticsDTO(StatisticsSummary):
     trainingsCount: int | None = None
     dateFrom: date | None = None
     dateTo: date | None = None
+
+
+class PyramidPlaceDTO(BaseModel):
+    id: str
+    name: str
+    region: str | None = None
+
+
+class PyramidRouteDTO(BaseModel):
+    name: str | None
+    grade: str | None
+
+
+class PyramidAscentDTO(BaseModel):
+    trainingId: str
+    date: date
+    routeSessionKey: str
+    route: PyramidRouteDTO
+    location: PyramidPlaceDTO | None
+    sector: PyramidPlaceDTO | None
+    bucket: Literal["onsight", "flash", "redpoint", "top_rope", "other_clean", "not_clean"]
+    style: str
+    belay: str
+    cleanAscent: bool | None
+    reachedTop: bool | None
+    attemptsCount: int
+    attempts: list[AttemptResponse]
+
+
+class PyramidPageDTO(BaseModel):
+    items: list[PyramidAscentDTO]
+    total: int
+    nextOffset: int | None

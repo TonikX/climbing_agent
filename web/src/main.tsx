@@ -8,8 +8,6 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  BarChart,
-  Bar,
 } from "recharts";
 import {
   Mountain,
@@ -42,6 +40,7 @@ import {
 } from "./api";
 import * as demo from "./demo";
 import "./style.css";
+import { Pyramid } from "./Pyramid";
 type Page = "overview" | "progress" | "trainings" | "profile";
 const navigation = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
@@ -862,74 +861,11 @@ function App() {
                               </div>
                             </details>
                           </section>
-                          <section className="panel">
-                            <div className="section-heading">
-                              <div>
-                                <h2>Твои категории</h2>
-                                <p>Выходы на трассы · порядок из журнала</p>
-                              </div>
-                              <Mountain size={20} />
-                            </div>
-                            {!data?.grades.length ? (
-                              <p className="empty">
-                                Пока нет данных по категориям.
-                              </p>
-                            ) : (
-                              <div className="chart">
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <BarChart
-                                    data={data.grades}
-                                    margin={{
-                                      top: 20,
-                                      right: 5,
-                                      left: -27,
-                                      bottom: 0,
-                                    }}
-                                  >
-                                    <CartesianGrid
-                                      vertical={false}
-                                      stroke="#edf0eb"
-                                    />
-                                    <XAxis
-                                      dataKey="grade"
-                                      tickLine={false}
-                                      axisLine={false}
-                                      tick={{ fontSize: 11, fill: "#808982" }}
-                                    />
-                                    <YAxis
-                                      allowDecimals={false}
-                                      tickLine={false}
-                                      axisLine={false}
-                                      tick={{ fontSize: 12, fill: "#808982" }}
-                                    />
-                                    <Tooltip />
-                                    <Bar
-                                      name="Выходы на трассы"
-                                      dataKey="routesCount"
-                                      fill="#bdd0bc"
-                                      radius={[5, 5, 0, 0]}
-                                      maxBarSize={32}
-                                    />
-                                    <Bar
-                                      name="Чисто"
-                                      dataKey="completedRoutes"
-                                      fill="#24664f"
-                                      radius={[5, 5, 0, 0]}
-                                      maxBarSize={32}
-                                    />
-                                  </BarChart>
-                                </ResponsiveContainer>
-                              </div>
-                            )}
-                            <div className="legend">
-                              <span>
-                                <i className="pale" /> Выходы на трассы
-                              </span>
-                              <span>
-                                <i /> Чисто
-                              </span>
-                            </div>
-                          </section>
+                          <Pyramid
+                            grades={data?.grades ?? []}
+                            filters={filters}
+                            demo={isDemo}
+                          />
                         </div>
                       )}
                       {page === "progress" && (

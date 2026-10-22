@@ -131,3 +131,41 @@ test("logout sends CSRF with cookies and accepts an empty 204 response", async (
     globalThis.fetch = original;
   }
 });
+test("pyramid drill-down preserves filters and encodes grade/style/page", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(url, "http://localhost");
+    assert.equal(parsed.pathname, "/api/v1/statistics/grade-ascents");
+    for (const [key, value] of Object.entries({
+      grade: "6B+",
+      style: "flash",
+      offset: "20",
+      date_from: "2026-10-01",
+      date_to: "2026-10-22",
+      region: "Анталья",
+      area_id: "geyik",
+    })) {
+      assert.equal(parsed.searchParams.get(key), value);
+    }
+    return new Response(
+      JSON.stringify({ items: [], total: 0, nextOffset: null }),
+    );
+  };
+  try {
+    await api.gradeAscents(
+      {
+        from: "2026-10-01",
+        to: "2026-10-22",
+        grade: "",
+        region: "Анталья",
+        areaId: "geyik",
+      },
+      "6B+",
+      "flash",
+      20,
+      new AbortController().signal,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});

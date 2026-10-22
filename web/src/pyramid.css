@@ -1,0 +1,160 @@
+.pyramid-panel {
+  margin-top: 22px;
+}
+.pyramid-note {
+  font-size: 11px;
+  color: #788670;
+  line-height: 1.8;
+}
+.pyramid-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 10px;
+  margin: 20px 0;
+}
+.pyramid-legend span,
+.pyramid-counts button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pyramid-legend i,
+.pyramid-counts i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.pyramid-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 15px 0;
+  border-bottom: 1px solid #eef0e8;
+}
+.pyramid-grade {
+  border: 0;
+  background: #edf2e5;
+  border-radius: 8px;
+  font-weight: 800;
+  padding: 10px;
+  min-width: 85px;
+  font-size: 14px;
+}
+.pyramid-grade small {
+  display: block;
+  font-size: 9px;
+  font-weight: 500;
+  color: #7c8b71;
+  margin-top: 5px;
+}
+.pyramid-body {
+  flex: 1;
+  min-width: 0;
+}
+.pyramid-track {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f7f8f3;
+  border-radius: 5px;
+}
+.pyramid-stack {
+  display: flex;
+  height: 20px;
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 12px;
+}
+.pyramid-stack button {
+  min-width: 4px;
+  border: 0;
+  border-right: 1px solid #ffffff77;
+  cursor: pointer;
+  padding: 0;
+}
+.pyramid-stack button:hover {
+  filter: brightness(1.2);
+}
+.pyramid-counts {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+.pyramid-counts button {
+  font-size: 9px;
+  border: 1px solid #e8ecdf;
+  background: #fff;
+  border-radius: 5px;
+  padding: 5px 7px;
+}
+.pyramid-counts button[aria-pressed="true"],
+.pyramid-grade[aria-pressed="true"] {
+  outline: 2px solid #6c8756;
+  outline-offset: 2px;
+}
+.pyramid-details {
+  border-top: 2px solid #dbe4ce;
+  margin-top: 23px;
+  padding-top: 24px;
+  scroll-margin-top: 25px;
+}
+.pyramid-ascent {
+  padding: 15px 0;
+  border-top: 1px solid #edf0e5;
+}
+.pyramid-ascent h3 {
+  font-size: 14px;
+  margin: 0;
+}
+.pyramid-ascent .section-heading {
+  margin-bottom: 8px;
+}
+.pyramid-attempt {
+  font-size: 11px;
+  line-height: 1.9;
+  background: #f6f7f1;
+  padding: 12px;
+  border-radius: 7px;
+  margin-top: 9px;
+}
+.pyramid-attempt p {
+  margin: 5px 0;
+}
+.pyramid-details summary {
+  font-size: 11px;
+}
+@media (max-width: 640px) {
+  .pyramid-row {
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .pyramid-grade {
+    min-width: 68px;
+    font-size: 12px;
+  }
+  .pyramid-counts button {
+    font-size: 9px;
+    padding: 5px;
+  }
+  .pyramid-ascent .section-heading {
+    flex-wrap: wrap;
+  }
+  .pyramid-legend {
+    gap: 9px;
+    font-size: 9px;
+  }
+  .pyramid-note {
+    font-size: 10px;
+  }
+}
+.charts:has(.pyramid-panel) {
+  grid-template-columns: 1fr;
+}
+.charts .pyramid-panel {
+  margin-top: 0;
+}

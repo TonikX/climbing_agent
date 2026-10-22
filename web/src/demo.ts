@@ -1,3 +1,4 @@
+import { demoBuckets } from "./pyramidDemo";
 import type { Grade, Period, Summary, Training } from "./api";
 // Isolated fixtures: never merged with API responses or sent to the backend.
 export const summary: Summary = {
@@ -10,7 +11,7 @@ export const summary: Summary = {
   maxReachedTopGrade: "6C+",
   maxCompletedGrade: "6C+",
 };
-export const grades: Grade[] = [
+const gradeValues: Grade[] = [
   { grade: "7A", routesCount: 3, attemptsCount: 9, completedRoutes: 0 },
   { grade: "6C+", routesCount: 5, attemptsCount: 12, completedRoutes: 1 },
   { grade: "6C", routesCount: 8, attemptsCount: 17, completedRoutes: 3 },
@@ -18,6 +19,10 @@ export const grades: Grade[] = [
   { grade: "6B", routesCount: 12, attemptsCount: 14, completedRoutes: 8 },
   { grade: "6A+", routesCount: 8, attemptsCount: 8, completedRoutes: 6 },
 ];
+export const grades: Grade[] = gradeValues.map((g) => ({
+  ...g,
+  pyramid: demoBuckets[g.grade],
+}));
 export const periods: Period[] = [
   {
     period: "2026-10",

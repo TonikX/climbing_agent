@@ -9,7 +9,44 @@ export type Summary = {
   maxReachedTopGrade?: string | null;
   maxCompletedGrade?: string | null;
 };
-export type Grade = Summary & { grade: string };
+export type PyramidBucket =
+  "onsight" | "flash" | "redpoint" | "top_rope" | "other_clean" | "not_clean";
+export type Grade = Summary & {
+  grade: string;
+  pyramid?: Record<PyramidBucket, number>;
+};
+export type GradeAscent = {
+  trainingId: string;
+  date: string;
+  routeSessionKey: string;
+  route: { name: string | null; grade: string | null };
+  location: { id: string; name: string; region: string | null } | null;
+  sector: { id: string; name: string } | null;
+  bucket: PyramidBucket;
+  style: string;
+  belay: string;
+  cleanAscent: boolean | null;
+  reachedTop: boolean | null;
+  attemptsCount: number;
+  attempts: Attempt[];
+};
+export type GradeAscentsPage = {
+  items: GradeAscent[];
+  total: number;
+  nextOffset: number | null;
+};
+export function gradeAscents(
+  filters: Filters,
+  grade: string,
+  style: PyramidBucket | null,
+  offset: number,
+  signal: AbortSignal,
+) {
+  const q = query({ ...filters, grade });
+  if (style) q.set("style", style);
+  q.set("offset", String(offset));
+  return request<GradeAscentsPage>("/statistics/grade-ascents?" + q, signal);
+}
 export type Period = Summary & { period: string };
 export type Attempt = {
   id: string;
