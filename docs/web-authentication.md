@@ -70,6 +70,9 @@ Cookie `__Host-climbing_session`: Secure, HttpOnly, SameSite=Lax, Path=/, без
 Ошибки callback возвращаются только как фиксированные коды `expired`, `failed`,
 `cancelled`, `approval`. Секреты и ответы token endpoint не попадают в журнал.
 Access log nginx/API выключен, Referrer-Policy=no-referrer. Start ограничен по IP.
+Upstream API/бота обновляется через Docker DNS без перезапуска nginx при смене IP.
+Для callback подавлены request-level error logs: они могли бы содержать OAuth code
+при недоступности upstream. Диагностика API остаётся без payload и query-параметров.
 
 Для локальной проверки cookie нужен HTTPS origin, зарегистрированный в BotFather;
 обычный HTTP Vite подходит для деморежима. Не ослаблять Secure для production.
