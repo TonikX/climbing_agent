@@ -153,7 +153,24 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
             await reply(session, job, "Тренировка уже начата.", menu(True))
         else:
             await execute_tool(session, "start_climbing_training", {**identity, "startedAt": now().isoformat()}, job.id)
-            await reply(session, job, "Тренировка начата. Откройте текущую тренировку, чтобы записать пролаз или указать место.", reply_menu(True))
+            await reply(session, job,
+                "🧗 Тренировка начата!\n\n"
+                "Запишите пролаз текстом или голосовым сообщением. Например:\n"
+                "«Гейкбаири, сектор Кебап, трасса Engesh 6a. Долез до конца, не чисто, "
+                "с зависанием, нижняя страховка. Две попытки, одно зависание, без срывов».\n\n"
+                "Что указать:\n"
+                "• Район, сектор и название трассы.\n"
+                "• Категория: например 5c, 6a+, 6b/6b+, 7a.\n"
+                "• Долез до конца: да / нет.\n"
+                "• Чисто: да / нет. При срыве или зависании — нет.\n"
+                "• Стиль: Onsight (с первой попытки без предварительной информации), "
+                "Flash (с первой попытки с информацией о трассе), Red Point (чисто после работы), "
+                "Верхняя, Со срывом или С зависанием.\n"
+                "• Страховка: нижняя / верхняя / автостраховка / боулдеринг.\n\n"
+                "Дополнительно можно указать число попыток, срывов, зависаний и комментарий. "
+                "Если данных не хватит, бот спросит уточнение.\n\n"
+                "В «Текущей тренировке» можно выбрать место, найти трассу в БД и изменить пролазы.",
+                reply_menu(True))
     elif command in ("training:finish", "training:finish:cancel", "/finish"):
         pending = list((await session.scalars(select(Job).where(Job.user_id == user.id, Job.id != job.id,
                    Job.lane == "ai", Job.status.in_(["pending", "processing"])).with_for_update())).all())
