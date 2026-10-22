@@ -158,3 +158,24 @@
 .charts .pyramid-panel {
   margin-top: 0;
 }
+.category-style-table {
+  min-width: 720px;
+}
+.category-style-table td {
+  vertical-align: top;
+}
+.category-style-table .pyramid-counts {
+  white-space: normal;
+  min-width: 220px;
+  margin-top: 0;
+}
+.category-style-table .pyramid-counts button {
+  font-size: 11px;
+  padding: 7px;
+}
+.category-style-table th {
+  font-size: 11px;
+}
+.category-style-table .pyramid-grade {
+  min-width: 65px;
+}

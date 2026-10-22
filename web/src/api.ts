@@ -11,7 +11,11 @@ export type Summary = {
 };
 export type PyramidBucket =
   "onsight" | "flash" | "redpoint" | "top_rope" | "other_clean" | "not_clean";
+export type AscentStyle =
+  "onsight" | "flash" | "redpoint" | "with_falls" | "with_hangs" | "unknown";
 export type Grade = Summary & {
+  styles?: Record<AscentStyle, number>;
+  belays?: Record<string, number>;
   grade: string;
   pyramid?: Record<PyramidBucket, number>;
 };
@@ -38,12 +42,14 @@ export type GradeAscentsPage = {
 export function gradeAscents(
   filters: Filters,
   grade: string,
-  style: PyramidBucket | null,
+  style: AscentStyle | null,
   offset: number,
   signal: AbortSignal,
+  belay?: string,
 ) {
   const q = query({ ...filters, grade });
-  if (style) q.set("style", style);
+  if (style) q.set("group_style", style);
+  if (belay) q.set("belay", belay);
   q.set("offset", String(offset));
   return request<GradeAscentsPage>("/statistics/grade-ascents?" + q, signal);
 }

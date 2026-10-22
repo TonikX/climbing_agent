@@ -52,13 +52,13 @@ export const demoBuckets: Record<string, Record<PyramidBucket, number>> = {
 export function demoPyramidPage(
   grades: Grade[],
   grade: string,
-  style: PyramidBucket | null,
+  style: import("./api").AscentStyle | null,
   offset: number,
+  belay?: string,
 ): GradeAscentsPage {
   const values = grades.find((g) => g.grade === grade)?.pyramid;
   const items: GradeAscentsPage["items"] = [];
   for (const [b, count] of Object.entries(values ?? {})) {
-    if (style && style !== b) continue;
     for (let i = 0; i < count; i++) {
       const clean = b !== "not_clean";
       const attempt = {
@@ -67,8 +67,15 @@ export function demoPyramidPage(
         attempts: 1,
         reached_top: clean,
         clean_ascent: clean,
-        style: b === "not_clean" ? "with_falls" : b,
-        belay: "lead",
+        style:
+          b === "not_clean"
+            ? i % 2
+              ? "with_hangs"
+              : "with_falls"
+            : ["top_rope", "other_clean"].includes(b)
+              ? "unknown"
+              : b,
+        belay: b === "top_rope" ? "top_rope" : "lead",
         falls: clean ? 0 : 1,
         hangs: 0,
         notes: null,
@@ -78,6 +85,11 @@ export function demoPyramidPage(
           grade,
         },
       };
+      if (
+        (style && attempt.style !== style) ||
+        (belay && attempt.belay !== belay)
+      )
+        continue;
       items.push({
         trainingId: "demo-training",
         date: "2026-10-21",
@@ -99,5 +111,32 @@ export function demoPyramidPage(
     items: items.slice(offset, offset + 20),
     total: items.length,
     nextOffset: offset + 20 < items.length ? offset + 20 : null,
+  };
+}
+
+export function demoDimensions(g: Grade) {
+  const entries = demoPyramidPage([g], g.grade, null, 0).items;
+  const styles: Record<string, number> = {
+    onsight: 0,
+    flash: 0,
+    redpoint: 0,
+    with_falls: 0,
+    with_hangs: 0,
+    unknown: 0,
+  };
+  const belays: Record<string, number> = {
+    lead: 0,
+    top_rope: 0,
+    auto_belay: 0,
+    bouldering: 0,
+    unknown: 0,
+  };
+  for (const item of entries) {
+    styles[item.style]++;
+    belays[item.belay]++;
+  }
+  return {
+    styles: styles as Record<import("./api").AscentStyle, number>,
+    belays,
   };
 }

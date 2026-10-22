@@ -4,18 +4,25 @@ import {
   type Filters,
   type Grade,
   type GradeAscentsPage,
-  type PyramidBucket,
+  type AscentStyle,
 } from "./api";
 import { demoPyramidPage } from "./pyramidDemo";
 import "./pyramid.css";
 
-const buckets: { id: PyramidBucket; name: string; color: string }[] = [
-  { id: "onsight", name: "Onsight", color: "#1b8972" },
-  { id: "flash", name: "Flash", color: "#c3972c" },
-  { id: "redpoint", name: "Red Point", color: "#b7476c" },
-  { id: "top_rope", name: "Верхняя (стиль)", color: "#5282a7" },
-  { id: "other_clean", name: "Другой чистый", color: "#8b7d9f" },
-  { id: "not_clean", name: "Без чистого пролаза", color: "#b8c0ad" },
+const buckets: { id: AscentStyle; name: string }[] = [
+  { id: "onsight", name: "Onsight" },
+  { id: "flash", name: "Flash" },
+  { id: "redpoint", name: "Red Point" },
+  { id: "with_falls", name: "Со срывом" },
+  { id: "with_hangs", name: "С зависанием" },
+  { id: "unknown", name: "Не указан" },
+];
+const belays = [
+  { id: "lead", name: "Нижняя" },
+  { id: "top_rope", name: "Верхняя" },
+  { id: "auto_belay", name: "Автостраховка" },
+  { id: "bouldering", name: "Без страховки / боулдеринг" },
+  { id: "unknown", name: "Не указана" },
 ];
 const names: Record<string, string> = {
   lead: "Нижняя",
@@ -48,7 +55,8 @@ export function Pyramid({
 }) {
   const [selection, setSelection] = useState<{
     grade: string;
-    style: PyramidBucket | null;
+    style: AscentStyle | null;
+    belay?: string;
   } | null>(null);
   const [page, setPage] = useState<GradeAscentsPage | null>(null);
   const [offset, setOffset] = useState(0);
@@ -70,7 +78,13 @@ export function Pyramid({
     if (offset === 0) setPage(null);
     const promise = demo
       ? Promise.resolve(
-          demoPyramidPage(grades, selection.grade, selection.style, offset),
+          demoPyramidPage(
+            grades,
+            selection.grade,
+            selection.style,
+            offset,
+            selection.belay,
+          ),
         )
       : gradeAscents(
           filters,
@@ -78,6 +92,7 @@ export function Pyramid({
           selection.style,
           offset,
           ac.signal,
+          selection.belay,
         );
     promise
       .then((next) => {
@@ -103,92 +118,90 @@ export function Pyramid({
       setFocusDetails(false);
     }
   }, [focusDetails, selection]);
-  function choose(grade: string, style: PyramidBucket | null) {
+  function choose(grade: string, style: AscentStyle | null, belay?: string) {
     setPage(null);
     setOffset(0);
-    setSelection({ grade, style });
+    setSelection({ grade, style, belay });
     setFocusDetails(true);
   }
-  const maximum = Math.max(1, ...grades.map((g) => g.routesCount ?? 0));
   return (
     <section className="panel pyramid-panel">
       <div className="section-heading">
         <div>
-          <h2>Пирамида категорий</h2>
-          <p>Выходы на трассы · выберите категорию или стиль</p>
+          <h2>Категории, стили и страховка</h2>
+          <p>Нажмите число, чтобы открыть соответствующие пролазы</p>
         </div>
       </div>
       <p className="pyramid-note">
-        Один выход на трассу — один сегмент. Стиль определяется по первому
-        чистому пролазу в этой группе попыток. Повторы в другой тренировке
-        считаются отдельно.
+        Один выход на трассу учитывается один раз: по первому чистому пролазу, а
+        если его не было — по последней попытке. Стиль и страховка считаются
+        отдельно.
       </p>
-      <div className="pyramid-legend">
-        {buckets.map((b) => (
-          <span key={b.id}>
-            <i style={{ background: b.color }} />
-            {b.name}
-          </span>
-        ))}
-      </div>
       {!grades.length ? (
-        <p className="empty">В выбранном периоде нет реальных пролазов.</p>
+        <p className="empty">Нет реальных пролазов за выбранный период.</p>
       ) : (
-        grades.map((g) => (
-          <div className="pyramid-row" key={g.grade}>
-            <button
-              className="pyramid-grade"
-              onClick={() => choose(g.grade, null)}
-              aria-label={`${g.grade}: все выходы, ${g.routesCount ?? 0}`}
-              aria-pressed={selection?.grade === g.grade && !selection.style}
-            >
-              {g.grade}
-              <small>{exits(g.routesCount ?? 0)}</small>
-            </button>
-            <div className="pyramid-body">
-              <div className="pyramid-track">
-                <div
-                  className="pyramid-stack"
-                  style={{
-                    width: `${((g.routesCount ?? 0) / maximum) * 100}%`,
-                  }}
-                >
-                  {buckets.map((b) => {
-                    const count = g.pyramid?.[b.id] ?? 0;
-                    return count > 0 ? (
-                      <button
-                        key={b.id}
-                        style={{ flex: count, background: b.color }}
-                        onClick={() => choose(g.grade, b.id)}
-                        aria-label={`${g.grade}, ${b.name}: ${count}`}
-                        title={`${b.name}: ${count}`}
-                      />
-                    ) : null;
-                  })}
-                </div>
-              </div>
-              <div className="pyramid-counts">
-                {buckets.map((b) => (
-                  <button
-                    disabled={!g.pyramid?.[b.id]}
-                    key={b.id}
-                    onClick={() => choose(g.grade, b.id)}
-                    aria-pressed={
-                      selection?.grade === g.grade && selection.style === b.id
-                    }
-                  >
-                    <i style={{ background: b.color }} />
-                    {b.name}: <strong>{g.pyramid?.[b.id] ?? 0}</strong>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        ))
+        <div className="table-wrap">
+          <table className="category-style-table">
+            <thead>
+              <tr>
+                <th>Категория</th>
+                <th>Выходы</th>
+                <th>Чисто</th>
+                <th>Стиль</th>
+                <th>Тип страховки</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grades.map((g) => (
+                <tr key={g.grade}>
+                  <td>
+                    <button
+                      className="pyramid-grade"
+                      onClick={() => choose(g.grade, null)}
+                    >
+                      {g.grade}
+                    </button>
+                  </td>
+                  <td>{g.routesCount ?? 0}</td>
+                  <td>{g.completedRoutes ?? 0}</td>
+                  <td>
+                    <div className="pyramid-counts">
+                      {buckets.map((b) => (
+                        <button
+                          key={b.id}
+                          disabled={!g.styles?.[b.id]}
+                          aria-label={`${g.grade}, ${b.name}: ${g.styles?.[b.id] ?? 0}`}
+                          onClick={() => choose(g.grade, b.id)}
+                        >
+                          {b.name}: <strong>{g.styles?.[b.id] ?? 0}</strong>
+                        </button>
+                      ))}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="pyramid-counts">
+                      {belays.map((b) => (
+                        <button
+                          key={b.id}
+                          disabled={!g.belays?.[b.id]}
+                          aria-label={`${g.grade}, страховка ${b.name}: ${g.belays?.[b.id] ?? 0}`}
+                          onClick={() => choose(g.grade, null, b.id)}
+                        >
+                          {b.name}: <strong>{g.belays?.[b.id] ?? 0}</strong>
+                        </button>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       <p className="pyramid-note">
-        «Верхняя» здесь — сохранённый стиль. Страховка указана отдельно в
-        записях. «Без чистого пролаза» включает попытки с неизвестной чистотой.
+        В старых записях «Верхняя» могла быть сохранена как стиль. Здесь такой
+        стиль показан как «Не указан», а страховка берётся из отдельного поля
+        записи. Данные не изменяются.
       </p>
       {selection && (
         <section
@@ -201,7 +214,9 @@ export function Pyramid({
             <div>
               <h2>
                 {selection.grade} ·{" "}
-                {buckets.find((b) => b.id === selection.style)?.name ??
+                {(selection.belay
+                  ? `Страховка: ${belays.find((b) => b.id === selection.belay)?.name}`
+                  : buckets.find((b) => b.id === selection.style)?.name) ??
                   "Все стили"}
               </h2>
               <p>
@@ -272,8 +287,10 @@ export function Pyramid({
                 {item.attempts.map((a) => (
                   <div className="pyramid-attempt" key={a.id}>
                     №{a.sequence} · попыток: {a.attempts} ·{" "}
-                    {names[a.style] ?? a.style} · страховка:{" "}
-                    {names[a.belay] ?? a.belay}
+                    {a.style === "top_rope"
+                      ? "Не указан (старая запись)"
+                      : (names[a.style] ?? a.style)}{" "}
+                    · страховка: {names[a.belay] ?? a.belay}
                     <br />
                     Дошёл:{" "}
                     {a.reached_top === null

@@ -627,14 +627,14 @@ def _period_summary(rows: list[tuple[TrainingSession, RouteAttempt]]) -> dict[st
 
 
 def _grade_breakdown(attempts: list[RouteAttempt]) -> list[dict[str, Any]]:
-    from app.statistics_pyramid import counts
+    from app.statistics_pyramid import counts, dimensions
     grouped: dict[str, list[RouteAttempt]] = {}
     for a in attempts:
         if a.is_test:
             continue
         grade = _historical_grade(a)
         grouped.setdefault(grade or "Без категории", []).append(a)
-    return [{"grade": grade, **_summary(values), "pyramid": counts(values)} for grade, values in
+    return [{"grade": grade, **_summary(values), "pyramid": counts(values), **dimensions(values)} for grade, values in
             sorted(grouped.items(), key=lambda item: _grade_rank(item[0]), reverse=True)]
 
 

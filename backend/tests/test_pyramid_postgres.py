@@ -33,6 +33,11 @@ class PyramidPostgresTest(unittest.IsolatedAsyncioTestCase):
         query='date_from=2026-10-01&date_to=2026-10-31&grade=6A'
         summary=(await self.client.get('/api/v1/statistics/grades?'+query,headers=a)).json()['grades'][0]
         self.assertEqual(summary['pyramid'],dict(onsight=1,flash=0,redpoint=1,top_rope=0,other_clean=0,not_clean=1))
+        self.assertEqual(summary['styles']['unknown'],1)
+        self.assertEqual(summary['belays']['top_rope'],3)
+        filtered=(await self.client.get('/api/v1/statistics/grade-ascents?'+query+'&group_style=unknown&belay=top_rope',headers=a)).json()
+        self.assertEqual(filtered['total'],1)
+        self.assertEqual(filtered['items'][0]['routeSessionKey'],'pending')
         result=await self.client.get('/api/v1/statistics/grade-ascents?'+query+'&style=redpoint&region=Анталья&area_id=loc',headers=a)
         self.assertEqual(result.status_code,200,result.text)
         body=result.json();self.assertEqual(body['total'],1)

@@ -376,13 +376,15 @@ async def current_statistics(session: Session, uid: UserId):
 async def grade_ascents(session: Session, uid: UserId,
         grade: str = Query(min_length=1, max_length=30),
         style: Literal["onsight", "flash", "redpoint", "top_rope", "other_clean", "not_clean"] | None = None,
+        group_style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] | None = None,
+        belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] | None = None,
         date_from: str | None = None, date_to: str | None = None,
         region: str | None = Query(default=None, max_length=200),
         area_id: str | None = Query(default=None, max_length=200),
         offset: int = Query(default=0, ge=0), limit: int = Query(default=20, ge=1, le=100)):
     from app.statistics_pyramid import ascents
     return await ascents(session, uid, date_from=date_from, date_to=date_to, grade=grade,
-        region=region, area_id=area_id, style=style, offset=offset, limit=limit)
+        region=region, area_id=area_id, style=style, group_style=group_style, belay=belay, offset=offset, limit=limit)
 
 
 @router.get("/statistics/{scope}", response_model=StatisticsDTO, response_model_exclude_unset=True)

@@ -138,7 +138,7 @@ test("pyramid drill-down preserves filters and encodes grade/style/page", async 
     assert.equal(parsed.pathname, "/api/v1/statistics/grade-ascents");
     for (const [key, value] of Object.entries({
       grade: "6B+",
-      style: "flash",
+      group_style: "flash",
       offset: "20",
       date_from: "2026-10-01",
       date_to: "2026-10-22",

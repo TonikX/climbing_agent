@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from app.statistics_pyramid import bucket, counts, route_groups
+from app.statistics_pyramid import bucket, counts, route_groups, dimensions
 from app.tool_service import _grade_breakdown
 
 
@@ -11,6 +11,17 @@ def attempt(id, key, sequence, clean=False, style="with_falls", test=False, grad
 
 
 class PyramidTest(unittest.TestCase):
+    def test_styles_and_belays_are_independent_and_keep_failed_styles(self):
+        values=[attempt("1","a",1,False,"with_falls"),
+                attempt("2","b",2,False,"with_hangs"),
+                attempt("3","c",3,True,"flash"),
+                attempt("4","d",4,True,"top_rope")]
+        values[2].belay="top_rope"
+        result=dimensions(values)
+        self.assertEqual(result['styles'],dict(onsight=0,flash=1,redpoint=0,with_falls=1,with_hangs=1,unknown=1))
+        self.assertEqual(result['belays']['top_rope'],1)
+        self.assertEqual(result['belays']['lead'],3)
+        self.assertEqual(values[3].style,'top_rope')
     def test_buckets_are_disjoint_and_use_first_clean_ascent(self):
         values=[attempt("1","a",1),attempt("2","a",2,True,"redpoint"),
                 attempt("3","a",3,True,"flash"),attempt("4","b",4,True,"flash"),

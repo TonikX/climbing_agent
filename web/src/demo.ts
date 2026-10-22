@@ -1,4 +1,4 @@
-import { demoBuckets } from "./pyramidDemo";
+import { demoBuckets, demoDimensions } from "./pyramidDemo";
 import type { Grade, Period, Summary, Training } from "./api";
 // Isolated fixtures: never merged with API responses or sent to the backend.
 export const summary: Summary = {
@@ -22,6 +22,7 @@ const gradeValues: Grade[] = [
 export const grades: Grade[] = gradeValues.map((g) => ({
   ...g,
   pyramid: demoBuckets[g.grade],
+  ...demoDimensions({ ...g, pyramid: demoBuckets[g.grade] }),
 }));
 export const periods: Period[] = [
   {
