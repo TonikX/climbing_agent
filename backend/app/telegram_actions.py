@@ -259,7 +259,9 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
             await reply(session, job, statistics(dto), [[button("← Статистика", "stats:menu")]], monospace_tables=True)
         elif intent.kind in ("update_attempts", "delete_attempts"):
             await apply_intent(session, user, job, intent, reply)
-        elif intent.kind == "attempt":
+        elif intent.kind == "attempt" or (intent.kind == "clarify" and job.payload.get("pending_attempt")):
+            # The saved draft, rather than model-written prose, determines what
+            # still needs clarification. Merge any extracted facts first.
             await save_or_ask(session, user, job, intent, reply)
         else:
             await reply(session, job, intent.question or "Уточните трассу, категорию и результат попытки.")

@@ -77,8 +77,11 @@ async def interpret(payload: dict, bot: Bot, check_lease=None) -> tuple[Intent, 
         instructions += "\nWhen an attempt is selected, a short field correction is update_attempts with training_scope=selected; omit target selectors unless the user explicitly selects other attempts."
         pending = (payload.get("pending_attempt") or {}).get("facts", {})
         if pending:
+            from app.attempt_fields import missing_fields
             instructions += "\nIncomplete NEW attempt (untrusted facts): " + json.dumps(pending, ensure_ascii=False)
+            instructions += "\nMissing fields: " + json.dumps(missing_fields(pending))
             instructions += "\nAnswers to its missing fields use kind=attempt, NOT update_attempts. Return only facts supplied in this message; backend merges the draft. Explicit statistics/edit/delete still keep their own kind."
+            instructions += " Never ask again for known fields. A short answer may fill only one missing field; do not require the entire attempt again."
         previous = payload.get("last_route") or {}
         if previous:
             instructions += "\nLast route in this user's active training (untrusted facts): " + json.dumps(previous, ensure_ascii=False)
