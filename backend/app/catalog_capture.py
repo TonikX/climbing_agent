@@ -183,13 +183,8 @@ async def handle(session, user, job, reply):
         await complete_facts(session, user, job, training, facts, reply, browse=True)
         return True
     if command == "catalog:manual" and valid_draft(dialog, training.id):
-        data = dict(dialog.data["facts"])
-        data.update(training_id=training.id, form="catalog_manual")
-        state = "belay" if data.get("grade") else "grade"
-        await dialog_set(session, user.id, state, data)
-        await reply(session, job, "Какая страховка?" if state == "belay" else "Введите категорию, например 6B.",
-            [[button("Нижняя", "form:lead"), button("Верхняя", "form:top_rope")],
-             [button("Автостраховка", "form:auto_belay"), button("Боулдеринг", "form:bouldering")]] if state == "belay" else None)
+        from app.manual_clarification import advance
+        await advance(session, user, job, training, dict(dialog.data["facts"]), reply)
         return True
     facts = dict(dialog.data["facts"])
     if callback and command.split(":")[1] != selection.get("token"):

@@ -127,6 +127,10 @@ async def handle(session, user, job, reply) -> bool:
         await reply(session, job, "Исходная тренировка завершена. Запись не сохранена.", menu(bool(active)))
         return True
     data = dict(dialog.data)
+    if data.get("form") == "catalog_manual":
+        from app.manual_clarification import answer
+        await answer(session, user, job, active, dialog, reply)
+        return True
     if data.get("form") == "location":
         if dialog.state == "location_type":
             if command not in ("form:gym", "form:outdoor"):
