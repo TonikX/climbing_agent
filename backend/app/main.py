@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,8 @@ app.middleware("http")(request_telemetry)
 from app.public_api import router as public_router, internal as internal_router
 app.include_router(public_router)
 app.include_router(internal_router)
+from app.web_auth import router as web_auth_router, SESSION_COOKIE, csrf_token, clear_session_cookie
+app.include_router(web_auth_router)
 Session = Annotated[AsyncSession, Depends(get_session, scope="function")]
 CurrentUser = Annotated[str, Depends(current_user_id)]
 RequestKey = Annotated[str | None, Header(alias="Idempotency-Key")]
@@ -91,13 +93,23 @@ async def telegram_login_endpoint(command: TelegramLogin, session: ControlSessio
 
 
 @app.post("/api/v1/auth/logout", status_code=204)
-async def logout(session: Session, auth: CurrentAuth):
+async def logout(session: Session, auth: CurrentAuth, response: Response):
     await session.delete(auth)
+    clear_session_cookie(response)
 
 
 @app.post("/api/v1/auth/logout-all", status_code=204)
-async def logout_all(session: Session, user_id: CurrentUser):
+async def logout_all(session: Session, user_id: CurrentUser, response: Response):
     await session.execute(delete(AuthSession).where(AuthSession.user_id == user_id))
+    clear_session_cookie(response)
+
+
+@app.get("/api/v1/auth/session")
+async def web_session(request: Request, session: Session, auth: CurrentAuth):
+    user = await session.get(User, auth.user_id)
+    token = request.cookies.get(SESSION_COOKIE)
+    return {"user": UserResponse.model_validate(user).model_dump(mode="json"),
+            "csrfToken": csrf_token(token) if token else None, "expiresAt": auth.expires_at.isoformat()}
 
 
 @app.get("/api/v1/me", response_model=UserResponse)

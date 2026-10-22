@@ -54,6 +54,7 @@ class RowSecurityTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(before, list((await conn.execute(text("SELECT id,route_snapshot FROM route_attempts ORDER BY id"))).all()))
                 self.assertEqual(await conn.scalar(text("SELECT status FROM users WHERE id='b'")), "pending_approval")
                 await conn.execute(text("INSERT INTO catalog_aliases(id,owner_id,name,location_id) VALUES ('alias-a','a','My area','loc')"))
+                await conn.execute(text("INSERT INTO web_login_states(state_hash,browser_hash,verifier,nonce,expires_at) VALUES (repeat('a',64),repeat('b',64),'test-verifier','test-nonce',now()+interval '10 minutes')"))
                 await conn.execute(text(f'CREATE ROLE "{role}" NOLOGIN NOSUPERUSER NOBYPASSRLS'))
                 await conn.execute(text(f'GRANT USAGE ON SCHEMA "{schema}" TO "{role}"'))
                 await conn.execute(text(f'GRANT SELECT ON ALL TABLES IN SCHEMA "{schema}" TO "{role}"'))
@@ -71,6 +72,7 @@ class RowSecurityTest(unittest.IsolatedAsyncioTestCase):
                         await conn.execute(text("INSERT INTO catalog_aliases(id,owner_id,name,location_id) VALUES ('attack-alias','b','Bad alias','loc')"))
                     await savepoint.rollback()
                 self.assertEqual(await conn.scalar(text("SELECT count(*) FROM jobs")), 0)
+                self.assertEqual(await conn.scalar(text("SELECT count(*) FROM web_login_states")), 0)
                 async with conn.begin_nested() as savepoint:
                     with self.assertRaises(DBAPIError):
                         await conn.execute(text("""INSERT INTO route_attempts(id,training_id,sequence,attempts,result,style,belay,feel,route_snapshot)

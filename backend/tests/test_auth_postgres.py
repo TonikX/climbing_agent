@@ -170,5 +170,15 @@ class AuthPostgresTest(unittest.IsolatedAsyncioTestCase):
             with Operations.context(MigrationContext.configure(conn)):
                 migration.upgrade()
         await self.conn.run_sync(upgrade)
+        # Current ORM also expects the additive browser-session migration.
+        await self.conn.execute(text("DROP TABLE web_login_states"))
+        web_path = Path(__file__).parents[1] / "migrations/versions/20261022_0019_web_auth.py"
+        web_spec = importlib.util.spec_from_file_location("web_auth_migration", web_path)
+        web_migration = importlib.util.module_from_spec(web_spec)
+        web_spec.loader.exec_module(web_migration)
+        def upgrade_web(conn):
+            with Operations.context(MigrationContext.configure(conn)):
+                web_migration.upgrade()
+        await self.conn.run_sync(upgrade_web)
         headers = await self.login("601")
         self.assertEqual((await self.client.get("/api/v1/me",headers=headers)).json(),profile)

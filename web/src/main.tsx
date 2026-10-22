@@ -37,6 +37,7 @@ import {
   type Grade,
   type Period,
   type User,
+  type BrowserSession,
 } from "./api";
 import * as demo from "./demo";
 import "./style.css";
@@ -93,6 +94,15 @@ function App() {
   const [mobile, setMobile] = useState(false);
   const [selected, setSelected] = useState<Training | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [csrf, setCsrf] = useState("");
+  const [loginEnabled, setLoginEnabled] = useState(false);
+  const [authError] = useState(params.get("auth_error"));
+  const authMessages: Record<string, string> = {
+    expired: "Время входа истекло. Попробуйте ещё раз.",
+    failed: "Telegram не подтвердил вход. Попробуйте ещё раз.",
+    cancelled: "Вход отменён.",
+    approval: "Сначала запросите доступ через бота и дождитесь подтверждения.",
+  };
   const [data, setData] = useState<{
     summary: Summary;
     grades: Grade[];
@@ -104,6 +114,14 @@ function App() {
   const [moreBusy, setMoreBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    if (isDemo) return;
+    const ac = new AbortController();
+    request<{ telegramLoginEnabled: boolean }>("/auth/config", ac.signal)
+      .then((c) => setLoginEnabled(c.telegramLoginEnabled))
+      .catch(() => setLoginEnabled(false));
+    return () => ac.abort();
+  }, [isDemo, retry]);
   useEffect(() => {
     const q = new URLSearchParams({ page, from: filters.from, to: filters.to });
     if (isDemo) q.set("demo", "1");
@@ -118,6 +136,7 @@ function App() {
     setData(null);
     setTrainings([]);
     setUser(null);
+    setCsrf("");
     if (isDemo) {
       setUser({
         name: "Александр",
@@ -134,13 +153,15 @@ function App() {
       setBusy(false);
       return () => ac.abort();
     }
-    Promise.all([
-      request<User>("/me", ac.signal),
-      dashboard(filters, ac.signal),
-      trainingPage(null, ac.signal),
-    ])
-      .then(([u, d, t]) => {
-        setUser(u);
+    request<BrowserSession>("/auth/session", ac.signal)
+      .then(async (auth) => {
+        const [d, t] = await Promise.all([
+          dashboard(filters, ac.signal),
+          trainingPage(null, ac.signal),
+        ]);
+        if (ac.signal.aborted) return;
+        setUser(auth.user);
+        setCsrf(auth.csrfToken);
         setData(d);
         setTrainings(t.items);
         setCursor(t.next_cursor);
@@ -153,6 +174,25 @@ function App() {
       });
     return () => ac.abort();
   }, [isDemo, filters, retry]);
+  async function logout(all = false) {
+    setMoreBusy(true);
+    try {
+      await request<void>(
+        all ? "/auth/logout-all" : "/auth/logout",
+        undefined,
+        { method: "POST", csrf },
+      );
+      setUser(null);
+      setData(null);
+      setTrainings([]);
+      setCsrf("");
+      setRetry((v) => v + 1);
+    } catch (e) {
+      setError(e as Error);
+    } finally {
+      setMoreBusy(false);
+    }
+  }
   function navigate(p: Page) {
     setPage(p);
     setSelected(null);
@@ -327,11 +367,24 @@ function App() {
               </span>
               <div className="eyebrow">CLIMBING JOURNAL</div>
               <h2>Твой журнал. Твой прогресс.</h2>
-              <p>{error.message}</p>
-              <p className="muted">
-                Веб-вход через Telegram пока не подключён. Тренировки и
-                статистика доступны в боте.
+              <p>
+                {authError && authMessages[authError]
+                  ? authMessages[authError]
+                  : error.message}
               </p>
+              <p className="muted">
+                {loginEnabled
+                  ? "Войдите через Telegram. Откроется тот же личный журнал, что и в боте. Доступ требует подтверждения владельцем."
+                  : "Веб-вход временно недоступен. Тренировки и статистика доступны в боте."}
+              </p>
+              {loginEnabled && (
+                <a
+                  className="primary-button"
+                  href="/api/v1/auth/telegram/start"
+                >
+                  Войти через Telegram <ArrowUpRight size={17} />
+                </a>
+              )}
               <a
                 className="primary-button"
                 href="https://t.me/anton_climbing_bot"
@@ -954,6 +1007,24 @@ function App() {
                             >
                               Выйти из демонстрации
                             </button>
+                          )}
+                          {!isDemo && (
+                            <div>
+                              <button
+                                className="secondary-button"
+                                disabled={moreBusy}
+                                onClick={() => logout()}
+                              >
+                                Выйти
+                              </button>
+                              <button
+                                className="text-button"
+                                disabled={moreBusy}
+                                onClick={() => logout(true)}
+                              >
+                                Выйти со всех устройств
+                              </button>
+                            </div>
                           )}
                         </section>
                       )}

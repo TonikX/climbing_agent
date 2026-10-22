@@ -85,7 +85,12 @@ services:
   api:
     <<: *runtime
     command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000", --no-access-log]
-    environment: *api-env
+    environment:
+      <<: *api-env
+      WEB_ORIGIN: ${WEB_ORIGIN:-}
+      TELEGRAM_OIDC_CLIENT_ID: ${TELEGRAM_OIDC_CLIENT_ID:-}
+      TELEGRAM_OIDC_CLIENT_SECRET: ${TELEGRAM_OIDC_CLIENT_SECRET:-}
+    networks: [backend, egress]
     depends_on:
       migrate: {condition: service_completed_successfully}
     healthcheck:
@@ -148,7 +153,10 @@ services:
       api: {condition: service_healthy}
 
   nginx:
-    image: nginx:1.28-alpine
+    image: climbing-journal-web:public
+    build:
+      context: .
+      dockerfile: web/Dockerfile
     logging: *bounded-logs
     restart: unless-stopped
     ports: ["${NGINX_HTTP_PORT:-8080}:80", "${NGINX_HTTPS_PORT:-8443}:443"]

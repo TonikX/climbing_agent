@@ -66,3 +66,24 @@ test("unauthorized response becomes an explicit login error", async () => {
     globalThis.fetch = original;
   }
 });
+test("logout sends CSRF with cookies and accepts an empty 204 response", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "/api/v1/auth/logout");
+    assert.equal(options.method, "POST");
+    assert.equal(options.credentials, "include");
+    assert.equal(options.headers["X-CSRF-Token"], "session-bound-csrf");
+    return new Response(null, { status: 204 });
+  };
+  try {
+    assert.equal(
+      await api.request("/auth/logout", undefined, {
+        method: "POST",
+        csrf: "session-bound-csrf",
+      }),
+      undefined,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});

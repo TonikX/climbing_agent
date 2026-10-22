@@ -57,15 +57,26 @@ export class ApiError extends Error {
 export async function request<T>(
   path: string,
   signal?: AbortSignal,
+  mutation?: { csrf: string; method: "POST" },
 ): Promise<T> {
   const r = await fetch("/api/v1" + path, {
     credentials: "include",
     signal,
-    headers: { Accept: "application/json" },
+    method: mutation?.method ?? "GET",
+    headers: {
+      Accept: "application/json",
+      ...(mutation ? { "X-CSRF-Token": mutation.csrf } : {}),
+    },
   });
   if (!r.ok) throw new ApiError(r.status);
+  if (r.status === 204) return undefined as T;
   return r.json();
 }
+export type BrowserSession = {
+  user: User;
+  csrfToken: string;
+  expiresAt: string;
+};
 export function query(f: Filters) {
   const q = new URLSearchParams({ date_from: f.from, date_to: f.to });
   if (f.grade) q.set("grade", f.grade);

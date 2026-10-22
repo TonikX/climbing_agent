@@ -1,7 +1,7 @@
 import secrets
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,12 +19,21 @@ async def require_internal_key(x_api_key: Annotated[str | None, Header()] = None
 
 
 async def current_auth_session(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_session, scope="function")],
     control: Annotated[AsyncSession, Depends(get_control_session, scope="function")],
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)] = None,
 ) -> AuthSession:
-    authorization = f"{credentials.scheme} {credentials.credentials}" if credentials else None
+    from app.web_auth import SESSION_COOKIE, check_browser_request
+    cookie = request.cookies.get(SESSION_COOKIE)
+    if cookie and credentials and not secrets.compare_digest(cookie, credentials.credentials):
+        raise HTTPException(400, "Conflicting authentication credentials")
+    authorization = f"Bearer {cookie}" if cookie else (f"{credentials.scheme} {credentials.credentials}" if credentials else None)
     auth = await authenticate(control, authorization)
+    if cookie:
+        if auth.channel != "web":
+            raise HTTPException(401, "Browser session required")
+        check_browser_request(request, cookie)
     await set_user_context(session, auth.user_id)
     # Return an object attached to the data transaction (logout remains atomic).
     result = await session.get(AuthSession, auth.id)

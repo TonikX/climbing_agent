@@ -49,7 +49,7 @@ def main():
         conn.execute("GRANT SELECT ON users,external_refs TO climbing_runtime")
         conn.execute("GRANT UPDATE(name,timezone,test_mode_enabled) ON users TO climbing_runtime")
         conn.execute("GRANT SELECT,DELETE ON auth_sessions TO climbing_runtime")
-        control = ("users", "auth_sessions", "external_refs", "access_requests", "telegram_updates", "jobs", "outbox", "usage", "audit_events", "deletion_records", "dialog_states", "update_receipts")
+        control = ("users", "auth_sessions", "external_refs", "access_requests", "telegram_updates", "jobs", "outbox", "usage", "audit_events", "deletion_records", "dialog_states", "update_receipts", "web_login_states")
         for table in control:
             conn.execute(sql.SQL("GRANT SELECT,INSERT,UPDATE,DELETE ON {} TO climbing_control_login").format(sql.Identifier(table)))
         conn.execute("GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO climbing_control_login")

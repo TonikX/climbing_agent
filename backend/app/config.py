@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     ai_daily_budget_units: int = 0
     ai_call_reservation_units: int = 0
     api_url: str = "http://api:8000"
+    web_origin: str = ""
+    telegram_oidc_client_id: str = ""
+    telegram_oidc_client_secret: SecretStr = SecretStr("")
 
     @property
     def database_url(self) -> URL:

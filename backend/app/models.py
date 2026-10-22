@@ -58,10 +58,22 @@ class User(Base):
 
 class AuthSession(Base):
     __tablename__ = "auth_sessions"
+    __table_args__ = (CheckConstraint("channel IN ('bot', 'web')", name="ck_auth_session_channel"),)
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: new_id("auth"))
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    channel: Mapped[str] = mapped_column(String(10), default="bot", server_default=text("'bot'"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class WebLoginState(Base):
+    """Short-lived, single-use OIDC state, available only to the control role."""
+    __tablename__ = "web_login_states"
+    state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    browser_hash: Mapped[str] = mapped_column(String(64), index=True)
+    verifier: Mapped[str] = mapped_column(String(128))
+    nonce: Mapped[str] = mapped_column(String(128))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
