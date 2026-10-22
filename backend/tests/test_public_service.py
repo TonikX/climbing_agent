@@ -20,6 +20,31 @@ def record_intent(**values):
 
 
 class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_journal_shows_inline_actions_and_opens_history_without_ai(self):
+        from aiogram.types import InlineKeyboardMarkup
+        await self.login('2')
+        for command in ('/journal', '🏠 Главное меню', 'Журнал тренировок'):
+            await self.send('2', command)
+            await self.process()
+            payload = await self.conn.scalar(select(Outbox.payload).order_by(Outbox.sequence.desc()).limit(1))
+            markup = InlineKeyboardMarkup.model_validate(payload['reply_markup'])
+            callbacks = {button.callback_data for row in markup.inline_keyboard for button in row}
+            self.assertIn('trainings:0', callbacks)
+            self.assertIn('training:start', callbacks)
+        await self.send('2', 'trainings:0', True)
+        await self.process()
+        payload = await self.conn.scalar(select(Outbox.payload).order_by(Outbox.sequence.desc()).limit(1))
+        self.assertIn('Тренировок для выбранного фильтра нет', payload['text'])
+        await self.send('2', 'training:start', True)
+        await self.process()
+        await self.send('2', 'journal', True)
+        await self.process()
+        payload = await self.conn.scalar(select(Outbox.payload).order_by(Outbox.sequence.desc()).limit(1))
+        callbacks = {button['callback_data'] for row in payload['reply_markup']['inline_keyboard'] for button in row}
+        self.assertIn('training:details:current', callbacks)
+        self.assertNotIn('training:start', callbacks)
+        self.assertEqual(await self.conn.scalar(select(func.count(Job.id)).where(Job.lane=='ai')), 0)
+
     async def test_change_training_date_buttons_validation_and_ownership(self):
         from datetime import date
         await self.login('2')
@@ -244,10 +269,10 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.send("2", "🏠 Главное меню")
         await self.process()
         payload = await self.conn.scalar(select(Outbox.payload).where(Outbox.dedupe_key.like("job:%")).order_by(Outbox.sequence.desc()).limit(1))
-        markup = ReplyKeyboardMarkup.model_validate(payload["reply_markup"])
-        labels = [x.text for row in markup.keyboard for x in row]
+        markup = InlineKeyboardMarkup.model_validate(payload["reply_markup"])
+        labels = [x.text for row in markup.inline_keyboard for x in row]
         self.assertIn("🧗 Текущая тренировка", labels)
-        self.assertIn("🏠 Главное меню", labels)
+        self.assertTrue(any(x.callback_data=="trainings:0" for row in markup.inline_keyboard for x in row))
         self.assertNotIn("📋 Все попытки", labels)
         ai_before = await self.conn.scalar(select(func.count(Job.id)).where(Job.lane=="ai"))
         await self.send("2", "📊 Статистика")

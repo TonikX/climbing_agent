@@ -99,7 +99,7 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
     elif await handle_manual_form(session, user, job, reply):
         pass
     elif command in ("/journal", "journal"):
-        await reply(session, job, "🧗 Журнал тренировок", reply_menu(bool(await _active(session, user.id))))
+        await reply(session, job, "🧗 Журнал тренировок\nВыберите действие:", menu(bool(await _active(session, user.id))))
     elif command in ("/stats", "stats:menu"):
         await reply(session, job, "📊 Статистика", stats_menu())
     elif command.startswith("stats:"):

@@ -57,6 +57,8 @@ def menu(active: bool = False) -> list:
 
 MENU_COMMANDS = {item["text"]: item["callback_data"] for active in (False, True) for row in menu(active) for item in row}
 MENU_COMMANDS["🏠 Главное меню"] = "journal"
+MENU_COMMANDS["Журнал тренировок"] = "journal"
+MENU_COMMANDS["🧗 Журнал тренировок"] = "journal"
 
 
 def reply_menu(active=False):
