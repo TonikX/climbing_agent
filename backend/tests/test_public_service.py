@@ -20,6 +20,25 @@ def record_intent(**values):
 
 
 class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_training_list_labels_include_all_used_sectors_and_empty_fallback(self):
+        await self.login('2')
+        await self.send('2', 'training:start', True)
+        await self.process()
+        first = await self.conn.scalar(select(TrainingSession.id))
+        for name, sector in (('First route', 'Kebap'), ('Second route', 'Magara')):
+            await self.send('2', name)
+            await self.process('ai', record_intent(name=name, grade='6A', sector=sector))
+        await self.send('2', 'training:finish', True)
+        await self.process()
+        await self.send('2', 'training:start', True)
+        await self.process()
+        await self.send('2', 'trainings:0', True)
+        await self.process()
+        payload = await self.conn.scalar(select(Outbox.payload).order_by(Outbox.sequence.desc()).limit(1))
+        labels = {button['callback_data']:button['text'] for row in payload['reply_markup']['inline_keyboard'] for button in row}
+        self.assertIn('Test region · Kebap, Magara', labels['tr:'+first])
+        self.assertTrue(any('Без района · Без сектора' in label for key,label in labels.items() if key.startswith('tr:')))
+
     async def test_journal_shows_inline_actions_and_opens_history_without_ai(self):
         from aiogram.types import InlineKeyboardMarkup
         await self.login('2')

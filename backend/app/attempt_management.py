@@ -233,16 +233,26 @@ async def handle(session, user, job, reply):
             from sqlalchemy import tuple_
             query=query.where(tuple_(TrainingSession.local_date,TrainingSession.created_at,TrainingSession.id)<
                               (anchor.local_date,anchor.created_at,anchor.id))
-        trainings=list((await session.scalars(query.order_by(TrainingSession.local_date.desc(),
+        trainings=list((await session.scalars(query.options(selectinload(TrainingSession.sections)).order_by(TrainingSession.local_date.desc(),
             TrainingSession.created_at.desc(),TrainingSession.id.desc()).limit(11))).all())
         await dialog_set(session,user.id,"training_choose",{"form":"attempt_manage"})
+        sector_names = {}
+        sector_query = select(RouteAttempt.training_id, Section.name).join(Section,
+            Section.id == RouteAttempt.route_snapshot["sectorId"].astext).where(
+                RouteAttempt.training_id.in_([training.id for training in trainings[:10]]))
+        if not include_test:
+            sector_query = sector_query.where(RouteAttempt.is_test.is_(False))
+        for tid, name in (await session.execute(sector_query.distinct().order_by(Section.name))).all():
+            sector_names.setdefault(tid, []).append(name)
         keyboard=[]
         for training in trainings[:10]:
             region=await session.get(Location,training.primary_location_id) if training.primary_location_id else None
             from zoneinfo import ZoneInfo
             time_label=training.started_at.astimezone(ZoneInfo(training.timezone)).strftime(" %H:%M") if training.started_at else ""
-            label=f"{training.local_date:%d.%m.%Y}{time_label} · {region.name if region else 'Без района'}"+(" · текущая" if training.status=="active" else "")
-            keyboard.append([button(label[:80],"tr:"+training.id)])
+            names = sector_names.get(training.id) or sorted({section.name for section in training.sections})
+            sectors = ", ".join(names) if names else "Без сектора"
+            label=f"{training.local_date:%d.%m.%Y}{time_label} · {region.name if region else 'Без района'} · {sectors}"+(" · текущая" if training.status=="active" else "")
+            keyboard.append([button(label[:150],"tr:"+training.id)])
         if len(trainings)>10: keyboard.append([button("Далее",prefix+trainings[9].id)])
         keyboard.append([button("Скрыть тестовые тренировки" if include_test else "🧪 Показать также тестовые тренировки",
                                 "trainings:0" if include_test else "trainings-test:0")])
