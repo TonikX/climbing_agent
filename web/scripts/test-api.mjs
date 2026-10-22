@@ -15,6 +15,43 @@ const js = ts.transpileModule(source, {
 const api = await import(
   "data:text/javascript;base64," + Buffer.from(js).toString("base64")
 );
+const viewSource = await readFile(
+  new URL("../src/statistics-view.ts", import.meta.url),
+  "utf8",
+);
+const viewJs = ts.transpileModule(viewSource, {
+  compilerOptions: {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ES2022,
+  },
+}).outputText;
+const { readStatisticsView } = await import(
+  "data:text/javascript;base64," + Buffer.from(viewJs).toString("base64")
+);
+
+test("statistics view respects a shared link, then browser preference, then simple default", () => {
+  assert.equal(
+    readStatisticsView("?view=advanced", () => "simple"),
+    "advanced",
+  );
+  assert.equal(
+    readStatisticsView("?view=simple", () => "advanced"),
+    "simple",
+  );
+  assert.equal(
+    readStatisticsView("?page=progress", () => "advanced"),
+    "advanced",
+  );
+  assert.equal(
+    readStatisticsView("?view=invalid", () => "invalid"),
+    "simple",
+  );
+  const denied = () => {
+    throw new Error("Storage is disabled");
+  };
+  assert.equal(readStatisticsView("", denied), "simple");
+  assert.equal(readStatisticsView("?view=advanced", denied), "advanced");
+});
 test("dashboard reads flat DTO, passes filters and cookies without a bearer key", async () => {
   const original = globalThis.fetch;
   const calls = [];

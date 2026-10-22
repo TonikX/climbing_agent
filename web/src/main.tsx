@@ -39,6 +39,11 @@ import {
   type PlaceFilters,
 } from "./api";
 import * as demo from "./demo";
+import {
+  readStatisticsView,
+  statisticsViewKey,
+  type StatisticsView,
+} from "./statistics-view";
 import "./style.css";
 import { Pyramid } from "./Pyramid";
 type Page = "overview" | "progress" | "trainings" | "profile";
@@ -88,6 +93,12 @@ const trainingContext = (t: Training) => {
 };
 function App() {
   const params = new URLSearchParams(location.search);
+  const [statisticsView, setStatisticsView] = useState<StatisticsView>(() =>
+    readStatisticsView(location.search, () =>
+      localStorage.getItem(statisticsViewKey),
+    ),
+  );
+  const advanced = statisticsView === "advanced";
   const [isDemo, setDemo] = useState(params.get("demo") === "1");
   const [page, setPage] = useState<Page>(
     (navigation.some((n) => n.id === params.get("page"))
@@ -149,8 +160,14 @@ function App() {
     if (filters.grade) q.set("grade", filters.grade);
     if (filters.region) q.set("region", filters.region);
     if (filters.areaId) q.set("area_id", filters.areaId);
+    q.set("view", statisticsView);
     history.replaceState(null, "", "?" + q);
-  }, [page, filters, isDemo]);
+    try {
+      localStorage.setItem(statisticsViewKey, statisticsView);
+    } catch {
+      // Display preferences must not prevent access to the journal.
+    }
+  }, [page, filters, isDemo, statisticsView]);
   useEffect(() => {
     const ac = new AbortController();
     generation.current += 1;
@@ -268,6 +285,9 @@ function App() {
     ["Дошёл до конца", s?.reachedTopRoutes, Flag],
     ["Чистые пролазы", s?.completedRoutes, Check],
   ] as const;
+  const visibleCounts = advanced
+    ? counts
+    : counts.filter((_, i) => [0, 1, 4].includes(i));
   return (
     <div className="shell">
       <aside className={mobile ? "sidebar open" : "sidebar"}>
@@ -583,6 +603,40 @@ function App() {
                   </div>
                 </div>
               )}
+              {(page === "overview" || page === "progress") && !selected && (
+                <div className="statistics-view">
+                  <div>
+                    <strong>Отображение статистики</strong>
+                    <span>
+                      {advanced
+                        ? "Все показатели, графики и подробные таблицы"
+                        : "Главное за выбранный период"}
+                    </span>
+                  </div>
+                  <div
+                    className="segments"
+                    role="group"
+                    aria-label="Режим статистики"
+                  >
+                    {(
+                      [
+                        ["simple", "Простой"],
+                        ["advanced", "Расширенный"],
+                      ] as const
+                    ).map(([value, title]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        className={statisticsView === value ? "chosen" : ""}
+                        aria-pressed={statisticsView === value}
+                        onClick={() => setStatisticsView(value)}
+                      >
+                        {title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {busy ? (
                 <div role="status" className="loading">
                   <span className="spinner" /> Загружаем журнал…
@@ -695,11 +749,14 @@ function App() {
                     <>
                       {page === "overview" && (
                         <>
-                          <div className="kpis">
-                            {counts.map(([title, value, Icon], i) => (
+                          <div className={"kpis" + (advanced ? "" : " simple")}>
+                            {visibleCounts.map(([title, value, Icon]) => (
                               <div
                                 key={title}
-                                className={"kpi " + (i === 4 ? "accent" : "")}
+                                className={
+                                  "kpi " +
+                                  (title === "Чистые пролазы" ? "accent" : "")
+                                }
                               >
                                 <div>
                                   <span>{title}</span>
@@ -707,9 +764,9 @@ function App() {
                                 </div>
                                 <strong>{value ?? "—"}</strong>
                                 <small>
-                                  {i === 1
+                                  {title === "Выходы на трассы"
                                     ? "Выходы на трассы за период"
-                                    : i === 4
+                                    : title === "Чистые пролазы"
                                       ? "Без срывов и зависаний"
                                       : "За выбранный период"}
                                 </small>
@@ -718,11 +775,14 @@ function App() {
                           </div>
                           <div className="maxima">
                             <span className="max-label">ТВОЙ МАКСИМУМ</span>
-                            {[
-                              ["Пробовал", s?.maxAttemptedGrade],
-                              ["Дошёл до конца", s?.maxReachedTopGrade],
-                              ["Пролез чисто", s?.maxCompletedGrade],
-                            ].map(([title, g]) => (
+                            {(advanced
+                              ? [
+                                  ["Пробовал", s?.maxAttemptedGrade],
+                                  ["Дошёл до конца", s?.maxReachedTopGrade],
+                                  ["Пролез чисто", s?.maxCompletedGrade],
+                                ]
+                              : [["Пролез чисто", s?.maxCompletedGrade]]
+                            ).map(([title, g]) => (
                               <div key={title}>
                                 <span>{title}</span>
                                 <strong>{g ?? "—"}</strong>
@@ -736,139 +796,184 @@ function App() {
                           </div>
                         </>
                       )}
-                      {(page === "overview" || page === "progress") && (
-                        <div className="charts">
-                          <section className="panel">
-                            <div className="section-heading">
-                              <div>
-                                <h2>Движение вверх</h2>
-                                <p>
-                                  До 6 последних месяцев с тренировками в
-                                  периоде
+                      {advanced &&
+                        (page === "overview" || page === "progress") && (
+                          <div className="charts">
+                            <section className="panel">
+                              <div className="section-heading">
+                                <div>
+                                  <h2>Движение вверх</h2>
+                                  <p>
+                                    До 6 последних месяцев с тренировками в
+                                    периоде
+                                  </p>
+                                </div>
+                                <ChartNoAxesCombined size={20} />
+                              </div>
+                              <div className="legend">
+                                <span>
+                                  <i /> Попытки
+                                </span>
+                                <span>
+                                  <i className="light" /> Чистые пролазы
+                                </span>
+                              </div>
+                              {!data?.periods.length ? (
+                                <p className="empty">
+                                  В выбранном периоде тренировок нет.
                                 </p>
-                              </div>
-                              <ChartNoAxesCombined size={20} />
-                            </div>
-                            <div className="legend">
-                              <span>
-                                <i /> Попытки
-                              </span>
-                              <span>
-                                <i className="light" /> Чистые пролазы
-                              </span>
-                            </div>
-                            {!data?.periods.length ? (
-                              <p className="empty">
-                                В выбранном периоде тренировок нет.
-                              </p>
-                            ) : (
-                              <div className="chart">
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <AreaChart
-                                    data={[...data.periods]
-                                      .reverse()
-                                      .map((p) => ({
-                                        ...p,
-                                        name: month(p.period),
-                                      }))}
-                                    margin={{
-                                      top: 10,
-                                      right: 12,
-                                      left: -24,
-                                      bottom: 0,
-                                    }}
+                              ) : (
+                                <div className="chart">
+                                  <ResponsiveContainer
+                                    width="100%"
+                                    height="100%"
                                   >
-                                    <defs>
-                                      <linearGradient
-                                        id="fade"
-                                        x1="0"
-                                        y1="0"
-                                        x2="0"
-                                        y2="1"
-                                      >
-                                        <stop
-                                          offset="0%"
-                                          stopColor="#24664f"
-                                          stopOpacity={0.18}
-                                        />
-                                        <stop
-                                          offset="100%"
-                                          stopColor="#24664f"
-                                          stopOpacity={0}
-                                        />
-                                      </linearGradient>
-                                    </defs>
-                                    <CartesianGrid
-                                      vertical={false}
-                                      stroke="#edf0eb"
-                                    />
-                                    <XAxis
-                                      dataKey="name"
-                                      axisLine={false}
-                                      tickLine={false}
-                                      tick={{ fill: "#808982", fontSize: 12 }}
-                                    />
-                                    <YAxis
-                                      axisLine={false}
-                                      tickLine={false}
-                                      allowDecimals={false}
-                                      tick={{ fill: "#808982", fontSize: 12 }}
-                                    />
-                                    <Tooltip />
-                                    <Area
-                                      name="Попытки"
-                                      type="monotone"
-                                      dataKey="attemptsCount"
-                                      stroke="#24664f"
-                                      fill="url(#fade)"
-                                      strokeWidth={2.5}
-                                    />
-                                    <Area
-                                      name="Чистые пролазы"
-                                      type="monotone"
-                                      dataKey="completedRoutes"
-                                      stroke="#a4b970"
-                                      fill="transparent"
-                                      strokeWidth={2.5}
-                                    />
-                                  </AreaChart>
-                                </ResponsiveContainer>
-                              </div>
-                            )}
-                            <details>
-                              <summary>Показать данные таблицей</summary>
-                              <div className="table-wrap">
-                                <table>
-                                  <thead>
-                                    <tr>
-                                      <th>Месяц</th>
-                                      <th>Попытки</th>
-                                      <th>Чисто</th>
-                                      <th>Максимум чисто</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {data?.periods.map((p) => (
-                                      <tr key={p.period}>
-                                        <td>{p.period}</td>
-                                        <td>{p.attemptsCount ?? "—"}</td>
-                                        <td>{p.completedRoutes ?? "—"}</td>
-                                        <td>{p.maxCompletedGrade ?? "—"}</td>
+                                    <AreaChart
+                                      data={[...data.periods]
+                                        .reverse()
+                                        .map((p) => ({
+                                          ...p,
+                                          name: month(p.period),
+                                        }))}
+                                      margin={{
+                                        top: 10,
+                                        right: 12,
+                                        left: -24,
+                                        bottom: 0,
+                                      }}
+                                    >
+                                      <defs>
+                                        <linearGradient
+                                          id="fade"
+                                          x1="0"
+                                          y1="0"
+                                          x2="0"
+                                          y2="1"
+                                        >
+                                          <stop
+                                            offset="0%"
+                                            stopColor="#24664f"
+                                            stopOpacity={0.18}
+                                          />
+                                          <stop
+                                            offset="100%"
+                                            stopColor="#24664f"
+                                            stopOpacity={0}
+                                          />
+                                        </linearGradient>
+                                      </defs>
+                                      <CartesianGrid
+                                        vertical={false}
+                                        stroke="#edf0eb"
+                                      />
+                                      <XAxis
+                                        dataKey="name"
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fill: "#808982", fontSize: 12 }}
+                                      />
+                                      <YAxis
+                                        axisLine={false}
+                                        tickLine={false}
+                                        allowDecimals={false}
+                                        tick={{ fill: "#808982", fontSize: 12 }}
+                                      />
+                                      <Tooltip />
+                                      <Area
+                                        name="Попытки"
+                                        type="monotone"
+                                        dataKey="attemptsCount"
+                                        stroke="#24664f"
+                                        fill="url(#fade)"
+                                        strokeWidth={2.5}
+                                      />
+                                      <Area
+                                        name="Чистые пролазы"
+                                        type="monotone"
+                                        dataKey="completedRoutes"
+                                        stroke="#a4b970"
+                                        fill="transparent"
+                                        strokeWidth={2.5}
+                                      />
+                                    </AreaChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              )}
+                              <details>
+                                <summary>Показать данные таблицей</summary>
+                                <div className="table-wrap">
+                                  <table>
+                                    <thead>
+                                      <tr>
+                                        <th>Месяц</th>
+                                        <th>Попытки</th>
+                                        <th>Чисто</th>
+                                        <th>Максимум чисто</th>
                                       </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </details>
-                          </section>
-                          <Pyramid
-                            grades={data?.grades ?? []}
-                            filters={filters}
-                            demo={isDemo}
-                          />
-                        </div>
+                                    </thead>
+                                    <tbody>
+                                      {data?.periods.map((p) => (
+                                        <tr key={p.period}>
+                                          <td>{p.period}</td>
+                                          <td>{p.attemptsCount ?? "—"}</td>
+                                          <td>{p.completedRoutes ?? "—"}</td>
+                                          <td>{p.maxCompletedGrade ?? "—"}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </details>
+                            </section>
+                            <Pyramid
+                              grades={data?.grades ?? []}
+                              filters={filters}
+                              demo={isDemo}
+                            />
+                          </div>
+                        )}
+                      {!advanced && page === "progress" && (
+                        <section className="panel">
+                          <div className="section-heading">
+                            <div>
+                              <h2>Прогресс по месяцам</h2>
+                              <p>
+                                До 6 последних месяцев с тренировками в
+                                выбранном периоде
+                              </p>
+                            </div>
+                          </div>
+                          {!data?.periods.length ? (
+                            <p className="empty">
+                              В выбранном периоде тренировок нет.
+                            </p>
+                          ) : (
+                            <div className="table-wrap">
+                              <table>
+                                <thead>
+                                  <tr>
+                                    <th>Месяц</th>
+                                    <th>Чистые пролазы</th>
+                                    <th>Максимум чисто</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {data.periods.map((p) => (
+                                    <tr key={p.period}>
+                                      <td>
+                                        {month(p.period)} {p.period.slice(0, 4)}
+                                      </td>
+                                      <td>{p.completedRoutes ?? "—"}</td>
+                                      <td>{p.maxCompletedGrade ?? "—"}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </section>
                       )}
-                      {page === "progress" && (
+                      {advanced && page === "progress" && (
                         <section className="panel">
                           <div className="section-heading">
                             <div>
