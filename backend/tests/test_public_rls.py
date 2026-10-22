@@ -44,9 +44,9 @@ class RowSecurityTest(unittest.IsolatedAsyncioTestCase):
                 await conn.execute(text("""INSERT INTO training_sessions(id,user_id,status,local_date,timezone,environment,version)
                     VALUES ('ta','a','active','2026-10-10','Europe/Moscow','unknown',1),
                            ('tb','b','active','2026-10-10','Europe/Moscow','unknown',1)"""))
-                await conn.execute(text("""INSERT INTO route_attempts(id,training_id,sequence,attempts,result,style,belay,feel,route_snapshot)
-                    VALUES ('aa','ta',1,1,'unknown','unknown','unknown','unknown','{"name":"A","grade":"6B/6B+"}'),
-                           ('ab','tb',1,1,'unknown','unknown','unknown','unknown','{"name":"B"}')"""))
+                await conn.execute(text("""INSERT INTO route_attempts(id,training_id,sequence,attempts,result,style,belay,feel,reached_top,clean_ascent,route_snapshot)
+                    VALUES ('aa','ta',1,1,'unknown','unknown','lead','unknown',false,false,'{"name":"A","grade":"6B/6B+"}'),
+                           ('ab','tb',1,1,'unknown','unknown','lead','unknown',false,false,'{"name":"B"}')"""))
                 before = list((await conn.execute(text("SELECT id,route_snapshot FROM route_attempts ORDER BY id"))).all())
                 with patch.dict("os.environ", {"PUBLIC_MIGRATION_MANIFEST": json.dumps({"approved_user_ids": ["a"], "location_owners": {"loc": "a"}})}):
                     for path in public_migrations:
@@ -75,8 +75,8 @@ class RowSecurityTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await conn.scalar(text("SELECT count(*) FROM web_login_states")), 0)
                 async with conn.begin_nested() as savepoint:
                     with self.assertRaises(DBAPIError):
-                        await conn.execute(text("""INSERT INTO route_attempts(id,training_id,sequence,attempts,result,style,belay,feel,route_snapshot)
-                            VALUES ('attack','tb',2,1,'unknown','unknown','unknown','unknown','{}')"""))
+                        await conn.execute(text("""INSERT INTO route_attempts(id,training_id,sequence,attempts,result,style,belay,feel,reached_top,clean_ascent,route_snapshot)
+                            VALUES ('attack','tb',2,1,'unknown','unknown','lead','unknown',false,false,'{}')"""))
                     await savepoint.rollback()
                 await conn.execute(text("SELECT set_config('app.user_id','b',true)"))
                 self.assertEqual(await conn.scalar(text("SELECT count(*) FROM route_attempts")), 0)

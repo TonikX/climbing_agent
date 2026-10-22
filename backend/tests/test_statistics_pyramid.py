@@ -28,7 +28,7 @@ class PyramidTest(unittest.TestCase):
                 attempt("5","c",5),attempt("6","test",6,True,"onsight",True),
                 attempt("7","d",7,True,"top_rope"),attempt("8","e",8,True,"unknown")]
         result=counts(list(reversed(values)))
-        self.assertEqual(result,dict(onsight=0,flash=1,redpoint=1,top_rope=1,other_clean=1,not_clean=1))
+        self.assertEqual(result,dict(onsight=0,flash=1,redpoint=1,top_rope=0,other_clean=2,not_clean=1))
         dto=_grade_breakdown(values)[0]
         self.assertEqual(sum(dto["pyramid"].values()),dto["routesCount"])
         self.assertEqual(sum(v for k,v in dto["pyramid"].items() if k!="not_clean"),dto["completedRoutes"])

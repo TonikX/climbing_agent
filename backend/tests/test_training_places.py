@@ -48,7 +48,7 @@ class TrainingPlacesTest(unittest.IsolatedAsyncioTestCase):
                         snapshot["sectorId"] = sectors[index].id
                     session.add(RouteAttempt(training_id=training.id, sequence=number, attempts=1,
                         route_session_key=training.id+str(number), route_snapshot=snapshot, is_test=is_test,
-                        reached_top=True, clean_ascent=True, style="flash"))
+                        reached_top=True, clean_ascent=True, style="flash", belay="lead"))
             await session.flush()
             await session.commit()
         return headers, areas, trainings

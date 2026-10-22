@@ -13,12 +13,19 @@ from fastapi import HTTPException
 
 from app.db import engine
 from app.models import Base, RouteAttempt, User
-from app.tool_service import _start, _append, _update_attempt, _get_current, _save, _delete_attempt, execute_tool
+from app.tool_service import _start, _append as _append_raw, _update_attempt, _get_current, _save, _delete_attempt, execute_tool
 from app.schemas import AttemptCreate
 from app.service import append_attempt
 from app.main import start_training_endpoint, append_attempt_endpoint, finish_training_endpoint
 from app.schemas import TrainingCreate, FinishTraining
 from datetime import date
+
+
+async def _append(session, payload):
+    # Complete facts for fixtures whose purpose is grouping, editing or ownership.
+    raw = payload.get("attempt", payload)
+    complete = {"reachedTop": True, "cleanAscent": raw.get("style") in ("onsight", "flash", "redpoint"), "belay": "lead", **raw}
+    return await _append_raw(session, {**payload, "attempt": complete} if "attempt" in payload else complete)
 
 
 async def test_user(session, name):
@@ -47,8 +54,10 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
                 with Operations.context(MigrationContext.configure(conn)):
                     migration.upgrade()
             await self.conn.run_sync(upgrade)
-            new = await _append(session, {"user":user, "name":"Upper", "grade":"6B", "style":"top_rope", "belay":"top_rope", "cleanAscent":True, "hangs":1})
-            self.assertEqual((await session.get(RouteAttempt, old["attemptId"])).style, "flash")
+            await session.execute(text("UPDATE route_attempts SET style='top_rope', clean_ascent=false, hangs=1 WHERE id=:id"), {"id": old["attemptId"]})
+            session.expire_all()
+            new = old
+            self.assertEqual((await session.get(RouteAttempt, old["attemptId"])).belay, "top_rope")
             saved = await session.get(RouteAttempt, new["attemptId"])
             self.assertEqual(saved.style, "top_rope")
             self.assertFalse(saved.clean_ascent)
@@ -167,13 +176,13 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(current["summary"]["completedRoutes"], 1)
             session.expire_all()
             await _save(session, {"user": user, "date": "2026-09-28", "mergeIntoActive": True,
-                                 "routes": [{"name": "Route A", "cleanAscent": None}]})
+                                 "routes": [{"name": "Route A", "cleanAscent": False}]})
             session.expire_all()
             current = await _get_current(session, {"user": user})
             self.assertEqual(current["summary"]["completedRoutes"], 0)
             uid = await session.scalar(text("SELECT id FROM users LIMIT 1"))
             attempt = await append_attempt(session, uid, training["trainingId"],
-                                           AttemptCreate(name="Route B", clean_ascent=True))
+                                           AttemptCreate(name="Route B", clean_ascent=True, belay="lead"))
             self.assertTrue(attempt.reached_top)
             self.assertTrue(attempt.clean_ascent)
 
@@ -183,7 +192,7 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
             user = await test_user(session, "Past training test")
             await _start(session, {"user": user, "date": "2026-10-05"})
             await _append(session, {"user": user, "date": "2026-10-05", "name": "R", "cleanAscent": True})
-            await _save(session, {"user": user, "date": "2026-10-04", "routes": [{"name": "R", "cleanAscent": False}]})
+            await _save(session, {"user": user, "date": "2026-10-04", "routes": [{"name": "R", "cleanAscent": False, "reachedTop": False, "belay": "lead"}]})
             count = await session.scalar(text("SELECT count(DISTINCT route_session_key) FROM route_attempts"))
             self.assertEqual(count, 2)
 
@@ -207,7 +216,7 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
             user = await test_user(session, "REST test")
             training = await _start(session, {"user": user, "date": "2026-10-05"})
             uid = await session.scalar(text("SELECT id FROM users LIMIT 1"))
-            first = await append_attempt(session, uid, training["trainingId"], AttemptCreate(name="R", clean_ascent=False))
+            first = await append_attempt(session, uid, training["trainingId"], AttemptCreate(name="R", clean_ascent=False, reached_top=False, belay="lead"))
             second = await _append(session, {"user": user, "date": "2026-10-05", "name": "R", "cleanAscent": True})
             second_row = await session.get(RouteAttempt, second["attemptId"])
             self.assertEqual(first.route_session_key, second_row.route_session_key)
@@ -215,7 +224,7 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(second_row.style, "redpoint")
             person = await session.get(User, uid)
             person.test_mode_enabled = True
-            test = await append_attempt(session, uid, training["trainingId"], AttemptCreate(name="R", clean_ascent=True))
+            test = await append_attempt(session, uid, training["trainingId"], AttemptCreate(name="R", clean_ascent=True, belay="lead"))
             self.assertTrue(test.is_test)
             self.assertNotEqual(test.route_session_key, first.route_session_key)
 
@@ -224,7 +233,7 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
         async with AsyncSession(bind=self.conn, expire_on_commit=False) as session:
             user = await test_user(session, "Replay test")
             await execute_tool(session, "start_climbing_training", {"user": user, "date": "2026-10-05"}, "start")
-            payload = {"user": user, "date": "2026-10-05", "name": "R", "cleanAscent": False}
+            payload = {"user": user, "date": "2026-10-05", "name": "R", "cleanAscent": False, "reachedTop": False, "belay": "lead"}
             first = await execute_tool(session, "append_climbing_attempt", payload, "one")
             replay = await execute_tool(session, "append_climbing_attempt", payload, "one")
             self.assertEqual(first, replay)
@@ -248,7 +257,7 @@ class PostgresOutcomeTest(unittest.IsolatedAsyncioTestCase):
             first = await start_training_endpoint(command, session, user.id, "start")
             replay = await start_training_endpoint(command, session, user.id, "start")
             self.assertEqual(first, replay)
-            attempt = AttemptCreate(name="R", clean_ascent=True)
+            attempt = AttemptCreate(name="R", clean_ascent=True, belay="lead")
             added = await append_attempt_endpoint(first["id"], attempt, session, user.id, "append")
             self.assertTrue(added["is_test"])
             await finish_training_endpoint(first["id"], FinishTraining(duration_minutes=60), session, user.id, "finish")

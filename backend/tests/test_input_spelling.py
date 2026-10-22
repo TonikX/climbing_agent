@@ -14,7 +14,7 @@ class GradeInputTest(unittest.TestCase):
         for spelling in ("6a", "6а", "6A", "6А", " 6 а "):
             self.assertEqual(normalize_grade(spelling), "6A")
             self.assertEqual(Intent(kind="attempt", grade=spelling).grade, "6A")
-            self.assertEqual(AttemptCreate(grade=spelling).grade, "6A")
+            self.assertEqual(AttemptCreate(grade=spelling, belay="lead").grade, "6A")
             self.assertEqual(AttemptChanges(grade=spelling).grade, "6A")
             self.assertEqual(RouteWrite(section_id="s", name="R", grade=spelling).grade, "6A")
             self.assertEqual(grade_key(spelling), "6A")
@@ -26,7 +26,7 @@ class GradeInputTest(unittest.TestCase):
         for value in (card, card.replace(" Сектор:", "\nСектор:").replace(" Категория:", "\nКатегория:")):
             self.assertEqual(route_name(value), "crying boy")
             self.assertEqual(Intent(kind="attempt", name=value).name, "crying boy")
-            self.assertEqual(AttemptCreate(name=value).name, "crying boy")
+            self.assertEqual(AttemptCreate(name=value, belay="lead").name, "crying boy")
             self.assertEqual(AttemptChanges(name=value).name, "crying boy")
         item = SimpleNamespace(route_snapshot={"name":card, "grade":"6а"}, is_test=False,
                                clean_ascent=False, style="with_hangs", belay="top_rope")

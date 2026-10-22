@@ -65,7 +65,7 @@ async def run(lane: str):
                                 work.cancel()
                                 with contextlib.suppress(asyncio.CancelledError, Exception):
                                     await work
-                        result.update(intent=intent.model_dump(mode="json", exclude_none=True), tokens=tokens)
+                        result.update(intent=intent.model_dump(mode="json", exclude_none=True, exclude_unset=True), tokens=tokens)
                     elif lane == "delivery":
                         payload = item["payload"]
                         raw_markup = payload.get("reply_markup")

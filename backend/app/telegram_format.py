@@ -39,7 +39,7 @@ def active_training_actions(training) -> list:
 
 
 STYLE_NAMES = {"onsight": "Onsight", "flash": "Flash", "redpoint": "Red Point",
-               "with_falls": "Со срывом", "with_hangs": "С зависанием", "top_rope": "Верхняя", "unknown": "Не указан"}
+               "with_falls": "Со срывом", "with_hangs": "С зависанием", "unknown": "Не указан"}
 BELAY_NAMES = {"lead": "Нижняя", "top_rope": "Верхняя", "auto_belay": "Автостраховка",
                "bouldering": "Боулдеринг", "unknown": "Не указана"}
 
@@ -112,7 +112,7 @@ def summary(dto: dict) -> str:
     if styles:
         lines.append(" · ".join(styles))
     weighted = [f"{label}: {value[key]} попыток" for key, label in (
-        ("topRopeStyleAttemptsCount", "Верхняя (стиль)"), ("withFallsAttemptsCount", "Со срывом"),
+        ("withFallsAttemptsCount", "Со срывом"),
         ("withHangsAttemptsCount", "С зависанием")) if value.get(key)]
     if weighted:
         lines.append(" · ".join(weighted))

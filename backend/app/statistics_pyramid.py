@@ -43,7 +43,7 @@ def bucket(group):
     first = representative(group)
     if first.clean_ascent is not True:
         return "not_clean"
-    return first.style if first.style in BUCKETS[:4] else "other_clean"
+    return first.style if first.style in ("onsight", "flash", "redpoint") else "other_clean"
 
 
 def counts(attempts):

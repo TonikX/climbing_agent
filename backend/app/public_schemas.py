@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.grades import normalize_grade
 from app.route_input import route_name
-from app.schemas import AttemptResponse
+from app.schemas import AttemptResponse, known_attempt_fact
 
 
 class Strict(BaseModel):
@@ -22,6 +22,7 @@ class Claim(Strict):
 
 
 class AttemptChanges(Strict):
+    _known_facts = field_validator("reached_top", "clean_ascent", "belay", mode="before")(known_attempt_fact)
     _route_name = field_validator("name", mode="before")(route_name)
     region: str | None = Field(default=None, min_length=1, max_length=200)
     sector: str | None = Field(default=None, min_length=1, max_length=200)
@@ -29,8 +30,8 @@ class AttemptChanges(Strict):
     grade: str | None = Field(default=None, min_length=1, max_length=30)
     reached_top: bool | None = None
     clean_ascent: bool | None = None
-    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "top_rope", "unknown"] | None = None
-    belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] | None = None
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] | None = None
+    belay: Literal["lead", "top_rope", "auto_belay", "bouldering"] | None = None
     falls: int | None = Field(default=None, ge=0, le=1000)
     hangs: int | None = Field(default=None, ge=0, le=1000)
     notes: str | None = Field(default=None, max_length=1000)
@@ -57,7 +58,7 @@ class Intent(Strict):
     clean_ascent: bool | None = None
     falls: int | None = Field(default=None, ge=0, le=1000)
     hangs: int | None = Field(default=None, ge=0, le=1000)
-    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "top_rope", "unknown"] = "unknown"
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] = "unknown"
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] = "unknown"
     attempts: int | None = Field(default=None, ge=1, le=100)
     notes: str | None = Field(default=None, max_length=1000)
@@ -89,8 +90,8 @@ class AttemptPatch(AttemptChanges):
     clean_ascent: bool | None = None
     falls: int | None = Field(default=None, ge=0)
     hangs: int | None = Field(default=None, ge=0)
-    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "top_rope", "unknown"] | None = None
-    belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] | None = None
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] | None = None
+    belay: Literal["lead", "top_rope", "auto_belay", "bouldering"] | None = None
     notes: str | None = Field(default=None, max_length=1000)
     is_test: bool | None = None
 
@@ -162,6 +163,7 @@ class SummaryCreate(Strict):
 
 
 class SummaryAttempt(Strict):
+    _known_facts = field_validator("reached_top", "clean_ascent", "belay", mode="before")(known_attempt_fact)
     _route_name = field_validator("name", mode="before")(route_name)
     name: str = Field(min_length=1, max_length=200)
     grade: str | None = Field(default=None, max_length=30)
@@ -171,8 +173,8 @@ class SummaryAttempt(Strict):
     clean_ascent: bool | None = None
     falls: int | None = Field(default=None, ge=0)
     hangs: int | None = Field(default=None, ge=0)
-    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "top_rope", "unknown"] = "unknown"
-    belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] = "unknown"
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] = "unknown"
+    belay: Literal["lead", "top_rope", "auto_belay", "bouldering"]
     notes: str | None = Field(default=None, max_length=1000)
     is_test: bool = False
 

@@ -11,7 +11,7 @@ from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.attempt_outcome import normalized_style, outcome
+from app.attempt_outcome import normalized_style, outcome, validated_belay
 from app.idempotency import run_mutation
 from app.models import ExternalRef, Gear, Location, Route, RouteAttempt, Section, TrainingSession, User
 
@@ -291,6 +291,7 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
         RouteAttempt.training_id == training.id,
         RouteAttempt.route_session_key == route_session_key))) + 1
     facts = outcome(raw)
+    belay = validated_belay(raw)
     falls = raw.get("falls")
     style = normalized_style(raw)
     if facts["clean_ascent"] is True and attempt_number > 1 and style == "unknown":
@@ -299,7 +300,7 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
         training_id=training.id, route_id=route.id if route else None, sequence=sequence,
         route_session_key=route_session_key, attempt_number=attempt_number,
         attempts=int(raw.get("attempts") or 1), **facts,
-        style=style, belay=str(raw.get("belay") if raw.get("belay") not in (None, "unknown") else "top_rope"),
+        style=style, belay=belay,
         feel=str(raw.get("feel") or "unknown"), notes=raw.get("notes"),
         high_point=raw.get("highPoint"), total_moves=raw.get("totalMoves"), falls=falls, hangs=raw.get("hangs"),
         is_test=is_test,
@@ -445,6 +446,7 @@ async def _save(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
         if merged and len(candidates) == 1:
             item = candidates[0]
             facts = outcome(raw, item)
+            belay = validated_belay(raw, item)
             style = normalized_style(raw, item)
             for key, value in facts.items(): setattr(item, key, value)
             for source, target in (("attempts", "attempts"), ("falls", "falls"), ("hangs", "hangs"),
@@ -452,6 +454,7 @@ async def _save(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
                 if source in raw and (raw[source] is not None or source == "falls"):
                     setattr(item, target, raw[source])
             item.style = style
+            item.belay = belay
             if "isTest" in raw or user.test_mode_enabled:
                 item.is_test = bool(raw.get("isTest", False) or user.test_mode_enabled)
         else:
@@ -503,8 +506,10 @@ async def _update_attempt(session: AsyncSession, p: dict[str, Any]) -> dict[str,
     user = await _user(session, p["user"])
     item = await _attempt_target(session, user.id, p)
     facts = outcome(p, item)
+    belay = validated_belay(p, item)
     style = normalized_style(p, item)
     for key, value in facts.items(): setattr(item, key, value)
+    item.belay = belay
     updated: dict[str, Any] = {"reachedTop": item.reached_top, "cleanAscent": item.clean_ascent}
     mapping = {
         "highPoint": "high_point", "totalMoves": "total_moves", "falls": "falls", "hangs": "hangs", "belay": "belay", "isTest": "is_test",
@@ -590,7 +595,7 @@ def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
         "onsightCount": styles["onsight"],
         "flashCount": styles["flash"],
         "redpointCount": styles["redpoint"],
-        "topRopeStyleAttemptsCount": sum(a.attempts for a in attempts if a.style == "top_rope"),
+        "topRopeStyleAttemptsCount": 0,  # Deprecated response field; upper rope is only belay.
         "unknownStyleCount": styles["unknown"],
         "withFallsAttemptsCount": sum(a.attempts for a in attempts if a.style == "with_falls"),
         "withHangsAttemptsCount": sum(a.attempts for a in attempts if a.style == "with_hangs"),

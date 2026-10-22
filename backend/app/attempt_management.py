@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.attempt_outcome import outcome, normalized_style
+from app.attempt_outcome import outcome, normalized_style, validated_belay
 from app.models import Location, Section, RouteAttempt, TrainingSession, User
 from app.public_models import DialogState
 from app.public_schemas import AttemptChanges
@@ -58,9 +58,11 @@ async def patch_rows(session, uid, tid, version, ids, changes):
             raw[camel] = raw.pop(snake)
     for item in selected:
         facts, style = outcome(raw, item), normalized_style(raw, item)
+        belay = validated_belay(raw, item)
         for field, value in facts.items():
             setattr(item, field, value)
         item.style = style
+        item.belay = belay
         for field in ("falls", "hangs", "belay", "notes", "is_test"):
             if field in values:
                 setattr(item, field, values[field])

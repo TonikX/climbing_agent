@@ -25,8 +25,8 @@ def has_nonclean_evidence(raw: dict, current=None) -> bool:
 
 def normalized_style(raw: dict, current=None) -> str:
     style = str(raw.get("style", getattr(current, "style", "unknown")) or "unknown")
-    if style == "top_rope":
-        return style  # Cleanliness remains independent and is checked by outcome().
+    if style not in ("onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"):
+        raise HTTPException(422, "Unknown style; top_rope belongs in belay")
     if raw.get("falls", getattr(current, "falls", 0)):
         return "with_falls"
     if raw.get("hangs", getattr(current, "hangs", 0)):
@@ -36,12 +36,21 @@ def normalized_style(raw: dict, current=None) -> str:
     return "unknown" if style in ("onsight", "flash", "redpoint") and outcome(raw, current)["clean_ascent"] is not True else style
 
 
-def outcome(raw: dict, current=None) -> dict:
+def validated_belay(raw: dict, current=None) -> str:
+    value = raw.get("belay", getattr(current, "belay", None))
+    if value not in ("lead", "top_rope", "auto_belay", "bouldering"):
+        raise HTTPException(422, "Specify belay: lead, top_rope, auto_belay or bouldering")
+    return value
+
+
+def outcome(raw: dict, current=None, *, require_complete=True) -> dict:
     if "hangs" in raw and raw["hangs"] is not None and (type(raw["hangs"]) is not int or raw["hangs"] < 0):
         raise HTTPException(422, "hangs must be a non-negative integer or null")
     if any(key in raw and raw[key] is not None and type(raw[key]) is not bool
            for key in ("reachedTop", "cleanAscent")):
         raise HTTPException(422, "reachedTop and cleanAscent must be boolean or null")
+    if require_complete and any(key in raw and raw[key] is None for key in ("reachedTop", "cleanAscent")):
+        raise HTTPException(422, "reachedTop and cleanAscent cannot be null")
     top = getattr(current, "reached_top", None)
     clean = getattr(current, "clean_ascent", None)
     falls = raw.get("falls", getattr(current, "falls", None))
@@ -60,17 +69,20 @@ def outcome(raw: dict, current=None) -> dict:
     style = raw.get("style", getattr(current, "style", "unknown"))
     clean_style = style in ("onsight", "flash", "redpoint")
     nonclean = has_nonclean_evidence(raw, current)
-    if clean_style:
+    if clean_style and not nonclean and raw.get("reachedTop") is not False and raw.get("cleanAscent") is not False:
         if "cleanAscent" not in raw:
             clean = True
         if "reachedTop" not in raw:
             top = True
+    if raw.get("cleanAscent") is True and raw.get("reachedTop") is not False and not nonclean:
+        top = True
     if top is False or nonclean:
         clean = False
     if clean is True:
         top = True
-    if current is None and clean is None:
-        clean = False
+    if require_complete and (top is None or clean is None):
+        missing = [key for key, value in (("reachedTop", top), ("cleanAscent", clean)) if value is None]
+        raise HTTPException(422, "Specify " + ", ".join(missing))
     # Retain the historical value on edits for audit; readers use the two facts.
     legacy = raw.get("result") or getattr(current, "result", None)
     if legacy is None:

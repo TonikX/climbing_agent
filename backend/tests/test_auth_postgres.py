@@ -70,7 +70,7 @@ class AuthPostgresTest(unittest.IsolatedAsyncioTestCase):
         return {"Authorization": "Bearer " + result.json()["access_token"]}
 
     async def tool(self, headers, operation, payload, key=None):
-        return await self.client.post("/api/v1/tools/" + operation, json={"payload": payload},
+        return await self.client.post("/api/v1/tools/" + operation, json={"payload": ({"reachedTop": True, "cleanAscent": False, "belay": "lead", **payload} if operation == "append_climbing_attempt" else payload)},
                                       headers={**headers, **({"Idempotency-Key": key} if key else {})})
 
     async def test_identity_registration_profile_and_session_revocation(self):
@@ -118,7 +118,7 @@ class AuthPostgresTest(unittest.IsolatedAsyncioTestCase):
             result = await self.tool(a, operation, {**payload, "user":{"id":uid_b}})
             self.assertEqual(result.status_code, 404, result.text)
         for path in (f"/api/v1/trainings/{tid_b}/attempts", f"/api/v1/trainings/{tid_b}/finish"):
-            result = await self.client.post(path, headers=a, json={})
+            result = await self.client.post(path, headers=a, json={"belay":"lead", "clean_ascent":True} if path.endswith("/attempts") else {})
             self.assertEqual(result.status_code, 404, result.text)
         history = await self.tool(a, "get_climbing_trainings", {"userId":uid_b,"userName":"Скалолаз"})
         self.assertEqual(history.json()["count"], 0)

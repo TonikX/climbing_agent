@@ -26,7 +26,7 @@ class PyramidPostgresTest(unittest.IsolatedAsyncioTestCase):
         await add('a2','project',2,True,'redpoint')
         await add('a3','project',3,True,'flash')
         await add('a4','first',4,True,'onsight')
-        await add('a5','pending',5,None,'unknown')
+        await add('a5','pending',5,False,'unknown')
         await add('a6','test',6,True,'flash',test=True)
         await add('b1','private-b',1,True,'flash',tid='tb')
         await add('old1','old',1,True,'flash',tid='old')

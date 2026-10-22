@@ -14,7 +14,7 @@ import test_auth_postgres as auth_tests
 
 def record_intent(**values):
     facts = {"kind": "attempt", "region": "Test region", "sector": "Test sector",
-             "belay": "top_rope", "style": "with_hangs"}
+             "belay": "top_rope", "style": "with_hangs", "reached_top": True}
     facts.update(values)
     return Intent(**facts)
 
@@ -221,7 +221,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
             return None
         payload = {"worker_id": "worker"}
         if intent:
-            payload["intent"] = intent.model_dump(mode="json")
+            payload["intent"] = intent.model_dump(mode="json", exclude_none=True, exclude_unset=True)
         complete = await self.client.post(f"/api/v1/internal/jobs/{lane}/{item['id']}/complete", json=payload, headers=headers)
         self.assertEqual(complete.status_code, 200, complete.text)
         # Existing journal scenarios explicitly approve new catalogue entries.
@@ -256,7 +256,7 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         created = await self.client.post("/api/v1/trainings", headers=headers, json={"date":"2026-10-15", "notes":"keep"})
         tid = created.json()["id"]
         added = await self.client.post(f"/api/v1/trainings/{tid}/attempts", headers=headers,
-            json={"name":"Resume route", "grade":"6A", "reached_top":False})
+            json={"name":"Resume route", "grade":"6A", "reached_top":False, "belay":"lead"})
         self.assertEqual(added.status_code, 201, added.text)
         finished = await self.client.post(f"/api/v1/trainings/{tid}/finish", headers=headers, json={"duration_minutes":30})
         version = finished.json()["version"]
@@ -480,22 +480,22 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         login = await self.client.post("/api/v1/internal/auth/telegram", json={"telegram_id": "2"}, headers={"X-API-Key": "test-auth-key"})
         self.assertEqual(login.status_code, 200, login.text)
 
-    async def test_upper_style_manual_ai_editor_and_statistics_keep_cleanliness_independent(self):
+    async def test_upper_belay_is_independent_and_is_not_available_as_style(self):
         headers = await self.login("2")
         await self.start_at_test_location(headers)
         for value, callback in (("attempt:form", True), ("Верхняя трасса", False), ("6B", False),
-            ("form:top_rope", True), ("form:yes", True), ("form:top_rope", True), ("form:yes", True), ("0", False), ("1", False)):
+            ("form:top_rope", True), ("form:yes", True), ("form:with_hangs", True), ("form:yes", True), ("0", False), ("1", False)):
             await self.send("2", value, callback)
             await self.process()
         saved = (await self.conn.execute(select(RouteAttempt.id, RouteAttempt.style, RouteAttempt.clean_ascent, RouteAttempt.belay))).one()
-        self.assertEqual((saved.style, saved.clean_ascent, saved.belay), ("top_rope", False, "top_rope"))
+        self.assertEqual((saved.style, saved.clean_ascent, saved.belay), ("with_hangs", False, "top_rope"))
         await self.send("2", "Вторая, верхняя, чисто")
-        await self.process("ai", record_intent(name="Вторая", grade="6A", style="top_rope", clean_ascent=True, falls=0, hangs=0))
+        await self.process("ai", record_intent(name="Вторая", grade="6A", style="redpoint", clean_ascent=True, falls=0, hangs=0))
         await self.send("2", "Тестовая верхняя")
-        await self.process("ai", record_intent(name="Тестовая верхняя", grade="9C", style="top_rope", clean_ascent=True, falls=1, is_test=True))
+        await self.process("ai", record_intent(name="Тестовая верхняя", grade="9C", style="with_falls", clean_ascent=True, falls=1, is_test=True))
         stats = await self.client.get("/api/v1/statistics/month", headers=headers)
         self.assertEqual(stats.status_code, 200, stats.text)
-        self.assertEqual(stats.json()["topRopeStyleAttemptsCount"], 2)
+        self.assertEqual(stats.json()["topRopeStyleAttemptsCount"], 0)
         self.assertEqual(stats.json()["completedRoutes"], 1)
         await self.send("2", "am:pick:"+saved.id, True)
         await self.process()
@@ -504,10 +504,10 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         await self.process()
         data = await self.conn.scalar(select(DialogState.data))
         payload = await self.conn.scalar(select(Outbox.payload).where(Outbox.dedupe_key.like("job:%")).order_by(Outbox.sequence.desc()).limit(1))
-        self.assertTrue(any(x["text"]=="Верхняя" for row in payload["reply_markup"]["inline_keyboard"] for x in row))
+        self.assertFalse(any(x["text"]=="Верхняя" for row in payload["reply_markup"]["inline_keyboard"] for x in row))
         await self.send("2", "am:value:"+data["value_token"]+":top_rope", True)
         await self.process()
-        self.assertEqual(await self.conn.scalar(select(RouteAttempt.style).where(RouteAttempt.id==saved.id)), "top_rope")
+        self.assertEqual(await self.conn.scalar(select(RouteAttempt.style).where(RouteAttempt.id==saved.id)), "with_hangs")
         self.assertFalse(await self.conn.scalar(select(RouteAttempt.clean_ascent).where(RouteAttempt.id==saved.id)))
 
     async def test_ai_entry_exits_manual_form_and_saves_interpreted_attempt(self):

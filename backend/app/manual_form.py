@@ -33,7 +33,7 @@ async def handle(session, user, job, reply) -> bool:
                 "• Чисто: да / нет. При срыве или зависании — нет.\n"
                 "• Стиль: Onsight (с первой попытки без предварительной информации), "
                 "Flash (с первой попытки с информацией о трассе), Red Point (чисто после работы), "
-                "Верхняя, Со срывом или С зависанием.\n"
+                "Со срывом или С зависанием.\n"
                 "• Страховка: нижняя / верхняя / автостраховка / боулдеринг.\n\n"
                 "Дополнительно можно указать число попыток, срывов, зависаний и комментарий.\n\n"
                 "Можно найти трассу в БД или заполнить пролаз вручную кнопками ниже. "
@@ -186,11 +186,10 @@ async def handle(session, user, job, reply) -> bool:
         data["reachedTop"], dialog.state = command == "form:yes", "style"
         await reply(session, job, "Стиль попытки?", [[button("Onsight", "form:onsight"), button("Flash", "form:flash")],
                        [button("Red Point", "form:redpoint"), button("Не указан", "form:unknown")],
-                       [button("Верхняя", "form:top_rope")],
                        [button("Со срывом", "form:with_falls"), button("С зависанием", "form:with_hangs")]])
     elif dialog.state == "style":
         value = command.removeprefix("form:")
-        if value not in ("onsight", "flash", "redpoint", "with_falls", "with_hangs", "top_rope", "unknown"):
+        if value not in ("onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"):
             return True
         data["style"], dialog.state = value, "clean"
         await reply(session, job, "Пролезли чисто, без срывов и зависаний?", [[button("Да", "form:yes"), button("Нет", "form:no")]])

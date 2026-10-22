@@ -1,4 +1,4 @@
-"""Incomplete AI entries stay in PostgreSQL until the seven required facts are known."""
+"""Incomplete AI entries stay in PostgreSQL until all required facts are known."""
 from datetime import timedelta
 
 from app.attempt_management import card, dialog_set
@@ -9,8 +9,16 @@ from app.telegram_format import button, menu
 from app.tool_service import _active, execute_tool
 
 FIELDS = {"region": "Регион", "sector": "Сектор", "name": "Название трассы", "grade": "Категория",
-          "clean_ascent": "Чисто: да или нет", "style": "Стиль: onsight / flash / redpoint / верхняя / со срывом / с зависанием",
+          "reached_top": "Дошёл до конца: да или нет",
+          "clean_ascent": "Чисто: да или нет", "style": "Стиль: onsight / flash / redpoint / со срывом / с зависанием",
           "belay": "Страховка: нижняя / верхняя / автостраховка / боулдеринг"}
+
+
+def clear_inferred(facts):
+    # Recompute implications when a clarification contradicts an earlier draft.
+    for key in facts.pop("_inferred_facts", []):
+        if key in ("reached_top", "clean_ascent"):
+            facts.pop(key, None)
 
 
 async def place(session, training):
@@ -31,6 +39,7 @@ async def save_or_ask(session, user, job, intent, reply):
         await reply(session, job, "Черновик уже изменён или отменён. Повторите запись через «Записать пролаз».")
         return
     facts = dict(pending.get("facts", {})) if pending else {}
+    clear_inferred(facts)
     if intent.continue_current_route and not pending:
         previous = job.payload.get("last_route") or {}
         facts.update({k: previous[k] for k in ("name", "grade", "region", "sector") if previous.get(k)})
@@ -68,6 +77,13 @@ async def complete_facts(session, user, job, training, facts, reply, browse=Fals
     from app.catalog_capture import resolve, private_hierarchy
     from app.grades import normalize_grade
     from app.route_input import route_name
+    clear_inferred(facts)
+    if facts.get("style") == "top_rope":
+        facts.pop("style")  # Resume drafts created before top_rope was removed as a style.
+        if facts.get("belay") in (None, "unknown", "top_rope"):
+            facts["belay"] = "top_rope"
+        else:
+            facts.pop("belay")  # Conflicting old facts need clarification.
     if facts.get("grade"):
         facts["grade"] = normalize_grade(facts["grade"])
     if facts.get("name"):
@@ -83,18 +99,26 @@ async def complete_facts(session, user, job, training, facts, reply, browse=Fals
             await session.delete(dialog)
         await reply(session, job, "Место тренировки сохранено.\nРегион: "+facts["region"]+"\nСектор: "+facts["sector"], menu(True))
         return
-    if facts.get("falls") or facts.get("hangs") or facts.get("style") in ("with_falls", "with_hangs"):
-        facts["clean_ascent"] = False
-        if facts.get("falls") and facts.get("style") != "top_rope":
-            facts["style"] = "with_falls"
-        elif facts.get("hangs") and facts.get("style") != "top_rope":
-            facts["style"] = "with_hangs"
-    elif facts.get("style") in ("onsight", "flash", "redpoint"):
-        facts.setdefault("clean_ascent", True)
-        if facts["clean_ascent"] is False:
-            facts.pop("style")  # Ask for a consistent style rather than inventing a fall/hang.
+    from app.attempt_outcome import outcome
+    raw_facts = {**facts, **{camel: facts[snake] for snake, camel in
+        (("reached_top", "reachedTop"), ("clean_ascent", "cleanAscent")) if snake in facts}}
+    resolved = outcome(raw_facts, require_complete=False)
+    inferred = []
+    for key in ("reached_top", "clean_ascent"):
+        if resolved[key] is not None:
+            if facts.get(key) is None:
+                inferred.append(key)
+            facts[key] = resolved[key]
+    if inferred:
+        facts["_inferred_facts"] = inferred
+    if facts.get("falls"):
+        facts["style"] = "with_falls"
+    elif facts.get("hangs"):
+        facts["style"] = "with_hangs"
+    elif facts.get("style") in ("onsight", "flash", "redpoint") and facts.get("clean_ascent") is False:
+        facts.pop("style")
     missing = [label for key, label in FIELDS.items() if facts.get(key) is None or
-               facts.get(key) == "" or (facts.get(key) == "unknown" and not facts.get("manual"))]
+               facts.get(key) == "" or (facts.get(key) == "unknown" and (key == "belay" or not facts.get("manual")))]
     if missing:
         await dialog_set(session, user.id, "attempt_missing", {"form": "attempt_capture", "training_id": training.id,
                          "token": job.id, "facts": facts})

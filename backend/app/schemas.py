@@ -59,7 +59,14 @@ class TrainingCreate(BaseModel):
     gear_ids: list[str] = Field(default_factory=list, max_length=50)
 
 
+def known_attempt_fact(value):
+    if value is None or value == "unknown":
+        raise ValueError("Specify a known value")
+    return value
+
+
 class AttemptCreate(BaseModel):
+    _known_facts = field_validator("reached_top", "clean_ascent", "belay", mode="before")(known_attempt_fact)
     _route_name = field_validator("name", mode="before")(route_name)
     model_config = ConfigDict(extra="forbid")
     route_id: str | None = None
@@ -73,8 +80,8 @@ class AttemptCreate(BaseModel):
     clean_ascent: bool | None = None
     falls: int | None = Field(default=None, ge=0)
     hangs: int | None = Field(default=None, ge=0)
-    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "top_rope", "unknown"] = "unknown"
-    belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] = "unknown"
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] = "unknown"
+    belay: Literal["lead", "top_rope", "auto_belay", "bouldering"]
     feel: Literal["easy", "comfortable", "limit", "unknown"] = "unknown"
     notes: str | None = None
     is_test: bool = False
@@ -104,8 +111,8 @@ class AttemptResponse(BaseModel):
     id: str
     sequence: int
     attempts: int
-    reached_top: bool | None
-    clean_ascent: bool | None
+    reached_top: bool
+    clean_ascent: bool
     style: str
     hangs: int | None
     falls: int | None

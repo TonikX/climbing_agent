@@ -216,9 +216,9 @@ class RouteAttempt(Base):
         CheckConstraint("hangs IS NULL OR hangs >= 0", name="ck_attempt_hangs"),
         CheckConstraint("clean_ascent IS NOT TRUE OR hangs IS NULL OR hangs = 0", name="ck_attempt_clean_hangs"),
         CheckConstraint("reached_top IS NOT FALSE OR clean_ascent IS FALSE", name="ck_attempt_no_top"),
-        CheckConstraint("style IN ('onsight', 'flash', 'redpoint', 'with_falls', 'with_hangs', 'top_rope', 'unknown')", name="ck_attempt_style"),
+        CheckConstraint("style IN ('onsight', 'flash', 'redpoint', 'with_falls', 'with_hangs', 'unknown')", name="ck_attempt_style"),
         CheckConstraint("clean_ascent IS NOT TRUE OR style NOT IN ('with_falls','with_hangs')", name="ck_attempt_nonclean_style"),
-        CheckConstraint("belay IN ('lead', 'top_rope', 'auto_belay', 'bouldering', 'unknown')", name="ck_attempt_belay"),
+        CheckConstraint("belay IN ('lead', 'top_rope', 'auto_belay', 'bouldering')", name="ck_attempt_belay"),
         CheckConstraint("feel IN ('easy', 'comfortable', 'limit', 'unknown')", name="ck_attempt_feel"),
         CheckConstraint("attempts > 0", name="ck_attempt_count_positive"),
         CheckConstraint("attempt_number IS NULL OR attempt_number > 0", name="ck_attempt_number_positive"),
@@ -235,10 +235,10 @@ class RouteAttempt(Base):
     sequence: Mapped[int] = mapped_column(Integer)
     attempts: Mapped[int] = mapped_column(Integer, default=1)
     result: Mapped[str] = mapped_column(String(20), default="unknown")
-    reached_top: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    clean_ascent: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    reached_top: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    clean_ascent: Mapped[bool] = mapped_column(Boolean, nullable=False)
     style: Mapped[str] = mapped_column(String(20), default="unknown")
-    belay: Mapped[str] = mapped_column(String(20), default="unknown")
+    belay: Mapped[str] = mapped_column(String(20))
     feel: Mapped[str] = mapped_column(String(20), default="unknown")
     notes: Mapped[str | None] = mapped_column(Text)
     high_point: Mapped[int | None] = mapped_column(Integer)
