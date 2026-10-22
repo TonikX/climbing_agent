@@ -73,6 +73,11 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         payload = await self.conn.scalar(select(Outbox.payload).order_by(Outbox.sequence.desc()).limit(1))
         labels = {button['callback_data']:button['text'] for row in payload['reply_markup']['inline_keyboard'] for button in row}
         self.assertIn('Test region · Kebap, Magara', labels['tr:'+first])
+        self.assertEqual(len([key for key in labels if key.startswith('tr:')]), 1)
+        await self.send('2', 'trainings-test:0', True)
+        await self.process()
+        payload = await self.conn.scalar(select(Outbox.payload).order_by(Outbox.sequence.desc()).limit(1))
+        labels = {button['callback_data']:button['text'] for row in payload['reply_markup']['inline_keyboard'] for button in row}
         self.assertTrue(any('Без района · Без сектора' in label for key,label in labels.items() if key.startswith('tr:')))
 
     async def test_journal_shows_inline_actions_and_opens_history_without_ai(self):
@@ -383,12 +388,25 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
                 await self.process("ai", record_intent(name="Тест в смешанной", grade="8C", style="flash", reached_top=True, is_test=True))
             await self.send("2", "training:finish", True)
             await self.process()
+        await self.send("2", "training:start", True)
+        await self.process()
+        empty_id = await self.conn.scalar(select(TrainingSession.id).where(TrainingSession.status=="active"))
+        current = await self.client.get("/api/v1/statistics/current-training", headers=headers)
+        self.assertFalse(current.json()["active"])
+        # The editor still exposes the empty active training so it can receive its first attempt.
+        await self.send("2", "training:details:current", True)
+        await self.process()
+        payload = await self.conn.scalar(select(Outbox.payload).order_by(Outbox.sequence.desc()).limit(1))
+        self.assertIn("attempt:ai", [b["callback_data"] for row in payload["reply_markup"]["inline_keyboard"] for b in row])
+        await self.send("2", "training:finish", True)
+        await self.process()
         normal = await self.client.get("/api/v1/trainings", headers=headers)
         self.assertEqual(normal.status_code, 200, normal.text)
         self.assertEqual([x["id"] for x in normal.json()["items"]], [ids[1]])
         self.assertEqual(len(normal.json()["items"][0]["attempts"]), 1)
         all_data = await self.client.get("/api/v1/trainings?include_test=true", headers=headers)
-        self.assertEqual(len(all_data.json()["items"]), 2)
+        self.assertEqual(len(all_data.json()["items"]), 3)
+        self.assertIn(empty_id, [x["id"] for x in all_data.json()["items"]])
         history = await self.client.post("/api/v1/tools/get_climbing_trainings", headers=headers, json={"payload":{}})
         self.assertEqual(history.status_code, 200, history.text)
         self.assertEqual([x["id"] for x in history.json()["trainings"]], [ids[1]])
@@ -404,12 +422,14 @@ class PublicServiceTest(unittest.IsolatedAsyncioTestCase):
         buttons = [x["callback_data"] for row in payload["reply_markup"]["inline_keyboard"] for x in row]
         self.assertNotIn("tr:"+ids[0], buttons)
         self.assertIn("tr:"+ids[1], buttons)
+        self.assertNotIn("tr:"+empty_id, buttons)
         self.assertIn("trainings-test:0", buttons)
         await self.send("2", "trainings-test:0", True)
         await self.process()
         payload = await self.conn.scalar(select(Outbox.payload).where(Outbox.dedupe_key.like("job:%")).order_by(Outbox.sequence.desc()).limit(1))
         buttons = [x["callback_data"] for row in payload["reply_markup"]["inline_keyboard"] for x in row]
         self.assertIn("tr:"+ids[0], buttons)
+        self.assertIn("tr:"+empty_id, buttons)
         await self.send("2", "training:start", True)
         await self.process()
         await self.send("2", "Тест текущей")

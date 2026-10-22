@@ -683,7 +683,7 @@ async def _get_current(session: AsyncSession, p: dict[str, Any]) -> dict[str, An
     training = await _active(session, user.id)
     if not training:
         return {"active": False, "testMode": user.test_mode_enabled}
-    if not p.get("includeTest") and training.attempts and all(a.is_test for a in training.attempts):
+    if not p.get("includeTest") and not any(not a.is_test for a in training.attempts):
         return {"active": False, "testMode": user.test_mode_enabled}
     area = await session.get(Location, training.primary_location_id) if training.primary_location_id else None
     attempts = [a for a in training.attempts if p.get("includeTest") or not a.is_test]

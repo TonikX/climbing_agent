@@ -256,11 +256,11 @@ async def handle(session, user, job, reply):
             label=f"{training.local_date:%d.%m.%Y}{time_label} · {region.name if region else 'Без района'} · {sectors}"+(" · текущая" if training.status=="active" else "")
             keyboard.append([button(label[:150],"tr:"+training.id)])
         if len(trainings)>10: keyboard.append([button("Далее",prefix+trainings[9].id)])
-        keyboard.append([button("Скрыть тестовые тренировки" if include_test else "🧪 Показать также тестовые тренировки",
+        keyboard.append([button("Скрыть пустые и тестовые" if include_test else "🧪 Показать пустые и тестовые",
                                 "trainings:0" if include_test else "trainings-test:0")])
         keyboard.append([button("← Журнал","journal")])
         await reply(session,job,("Выберите тренировку." if trainings else "Тренировок для выбранного фильтра нет.") +
-                    ("\n🧪 Включены тестовые тренировки." if include_test else "\nТренировки только с тестовыми пролазами скрыты."),keyboard)
+                    ("\n🧪 Включены пустые и тестовые тренировки." if include_test else "\nПустые тренировки и тренировки только с тестовыми пролазами скрыты."),keyboard)
         return True
     if command.startswith("tr:"):
         training=await session.scalar(select(TrainingSession).where(TrainingSession.user_id==user.id,
