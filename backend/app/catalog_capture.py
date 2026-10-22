@@ -61,6 +61,19 @@ def grade_key(value):
 
 
 async def resolve(session, user, job, training, facts, reply, browse=False):
+    # A training's location is context, never a boundary for finding an ascent.
+    if not facts.get("place_only"):
+        if facts.get("route_id"):
+            await route_place(session, user.id, facts)
+        elif facts.get("name") and not facts.get("create_name"):
+            matches = (await search(session, user.id, "routes", facts["name"]))["items"]
+            exact = [item for item in matches if item["match"] == "exact"]
+            if len(exact) == 1:
+                facts["route_id"] = exact[0]["id"]
+                await route_place(session, user.id, facts)
+            elif matches:
+                await choose(session, user, job, training, facts, "name", "routes", facts["name"], None, reply)
+                return False
     parent = None
     for field, kind, key in LEVELS:
         if field == "name" and facts.get("place_only"):
@@ -109,6 +122,17 @@ async def resolve(session, user, job, training, facts, reply, browse=False):
     return True
 
 
+async def route_place(session, uid, facts):
+    """Use the selected route's real hierarchy only for this ascent."""
+    route = await target(session, uid, "routes", facts["route_id"])
+    section = await target(session, uid, "sections", route.section_id)
+    area = await target(session, uid, "locations", section.location_id)
+    for field in ("region", "sector", "name"):
+        facts.pop("create_"+field, None)
+    facts.update(name=route.name, sector=section.name, region=area.name,
+                 section_id=section.id, location_id=area.id)
+
+
 async def new_child(session, user, job, training, facts, field, kind, value, reply):
     token = secrets.token_hex(4)
     await dialog_set(session, user.id, "catalog_choice", {"form":"attempt_capture", "training_id":training.id,
@@ -137,6 +161,9 @@ async def handle(session, user, job, reply):
         facts = dict(dialog.data.get("facts", {})) if command == "catalog:choose" and valid_draft(dialog, training.id) else {}
         if command == "training:location":
             facts["place_only"] = True
+        else:
+            await choose(session, user, job, training, facts, "name", "routes", "", None, reply)
+            return True
         await complete_facts(session, user, job, training, facts, reply, browse=True)
         return True
     if command == "catalog:manual" and valid_draft(dialog, training.id):
@@ -197,7 +224,7 @@ async def handle(session, user, job, reply):
             offset, query = 0, "" if command.startswith("cb:") else command.strip()
         if not query and not callback:
             return True
-        if selection.get("parent") or field == "region":
+        if selection.get("parent") or field == "region" or selection.get("kind") == "routes":
             await choose(session, user, job, training, facts, field, selection["kind"], query, selection.get("parent"), reply, offset)
         else:
             await new_child(session, user, job, training, facts, field, selection["kind"], query, reply)
@@ -222,8 +249,6 @@ async def private_hierarchy(session, uid, facts, training):
                 region=area.region if area else None, type=area.type if area else facts.get("location_type", "outdoor"))
             session.add(private)
             await session.flush()
-        if area and training.primary_location_id == area.id:
-            training.primary_location_id = private.id
         area = private
         facts["location_id"] = area.id
         facts.pop("section_id", None)

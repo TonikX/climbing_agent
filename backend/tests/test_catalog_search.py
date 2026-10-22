@@ -233,10 +233,9 @@ class CatalogSearchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.conn.scalar(select(TrainingSession.primary_location_id)),self.area.id)
         await self.send("2","catalog:choose",True)
         await self.process()
-        await self.choose("cs",":0")
         data=await self.draft()
-        await self.choose("cs",":"+str(data["selection"]["ids"].index(self.sector.id)))
-        await self.choose("cs",":0")
+        self.assertIsNone(data["selection"]["parent"])
+        await self.choose("cs",":"+str(data["selection"]["ids"].index(self.route.id)))
         await self.send("2","catalog:manual",True)
         await self.process()
         for value in ("form:lead","form:yes","form:flash","form:yes","0","0"):
@@ -248,7 +247,8 @@ class CatalogSearchTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_route_requires_explicit_private_creation(self):
         await self.seed()
-        await self.client.post("/api/v1/trainings",headers=self.a,json={"date":"2026-10-15"})
+        await self.client.post("/api/v1/trainings",headers=self.a,
+            json={"date":"2026-10-15", "location_id":self.area.id})
         await self.send("2","Brandnew 6A flash")
         await self.process("ai",Intent(kind="attempt",region="Geyikbayiri",sector="Kebap",name="Brandnew",
             grade="6A",style="flash",belay="lead"))
@@ -260,22 +260,60 @@ class CatalogSearchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.conn.scalar(select(Location.owner_id).where(Location.id==row.route_snapshot["areaId"])),self.uid)
         self.assertEqual(await self.conn.scalar(select(func.count(Route.id)).where(Route.section_id==self.sector.id)),1)
         self.assertIsNotNone(row.route_id)
+        self.assertEqual(await self.conn.scalar(select(TrainingSession.primary_location_id)), self.area.id)
 
     async def test_duplicate_exact_names_require_selection(self):
         await self.seed()
         async with AsyncSession(bind=self.conn, join_transaction_mode="create_savepoint") as session:
-            session.add(Location(name="Geyikbayırı",type="outdoor",visibility="public",country="RU"))
+            session.add(Route(name="Engesh", section_id=self.outside.section_id, grade="6A"))
             await session.commit()
         await self.client.post("/api/v1/trainings",headers=self.a,json={"date":"2026-10-15"})
         await self.send("2","Geyikbayiri Kebap Engesh flash")
         await self.process("ai",Intent(kind="attempt",region="Geyikbayiri",sector="Kebap",name="Engesh",style="flash",belay="lead"))
         data=await self.draft()
-        self.assertEqual(data["selection"]["field"],"region")
+        self.assertEqual(data["selection"]["field"],"name")
         self.assertEqual(len(data["selection"]["ids"]),2)
         self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),0)
         token=data["selection"]["token"]
         await self.send("2",f"cs:{token}:99",True)
         await self.process()
         self.assertEqual(await self.conn.scalar(select(func.count(RouteAttempt.id))),0)
-        await self.choose("cs",":"+str(data["selection"]["ids"].index(self.area.id)))
+        await self.choose("cs",":"+str(data["selection"]["ids"].index(self.route.id)))
         self.assertEqual(await self.conn.scalar(select(RouteAttempt.route_id)),self.route.id)
+
+    async def test_global_route_search_keeps_training_place_and_private_data_hidden(self):
+        await self.seed()
+        private = await self.client.post('/api/v1/catalog/locations', headers=self.a,
+            json={'name':'My training place','type':'outdoor'})
+        self.assertEqual(private.status_code, 200, private.text)
+        place_id = private.json()['id']
+        started = await self.client.post('/api/v1/trainings', headers=self.a,
+            json={'date':'2026-10-15', 'location_id':place_id})
+        self.assertEqual(started.status_code, 201, started.text)
+        async with AsyncSession(bind=self.conn, join_transaction_mode='create_savepoint') as session:
+            hidden_section = Section(location_id=self.hidden.id, name='Hidden sector', type='sector')
+            session.add(hidden_section)
+            await session.flush()
+            hidden_route = Route(section_id=hidden_section.id, name='Engesh', grade='6A')
+            session.add(hidden_route)
+            await session.flush()
+            hidden_id = hidden_route.id
+            await session.commit()
+        await self.send('2', 'Engesh flash')
+        await self.process('ai', Intent(kind='attempt', name='Engesh', style='flash', belay='lead'))
+        row = (await self.conn.execute(select(RouteAttempt.route_id, RouteAttempt.route_snapshot))).one()
+        self.assertEqual(row.route_id, self.route.id)
+        self.assertEqual(row.route_snapshot['areaId'], self.area.id)
+        self.assertEqual(row.route_snapshot['sectorId'], self.sector.id)
+        self.assertEqual(await self.conn.scalar(select(TrainingSession.primary_location_id)), place_id)
+        await self.send('2', 'catalog:choose', True)
+        await self.process()
+        self.assertIn(self.outside.id, (await self.draft())['selection']['ids'])
+        self.assertNotIn(hidden_id, (await self.draft())['selection']['ids'])
+        await self.send('2', 'Outside only')
+        await self.process()
+        data = await self.draft()
+        self.assertIn(self.outside.id, data['selection']['ids'])
+        await self.choose('cs', ':'+str(data['selection']['ids'].index(self.outside.id)))
+        self.assertEqual((await self.draft())['facts']['route_id'], self.outside.id)
+        self.assertEqual(await self.conn.scalar(select(TrainingSession.primary_location_id)), place_id)
