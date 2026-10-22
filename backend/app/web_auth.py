@@ -172,5 +172,3 @@ async def callback(request: Request, session: Control):
     response = finish_redirect()
     set_cookie(response, SESSION_COOKIE, token, WEB_SESSION_SECONDS)
     return response
-
-

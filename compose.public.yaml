@@ -157,6 +157,7 @@ services:
     build:
       context: .
       dockerfile: web/Dockerfile
+      network: host
     logging: *bounded-logs
     restart: unless-stopped
     ports: ["${NGINX_HTTP_PORT:-8080}:80", "${NGINX_HTTPS_PORT:-8443}:443"]
