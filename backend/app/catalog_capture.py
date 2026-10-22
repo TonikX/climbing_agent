@@ -20,11 +20,18 @@ def reset_from(facts, field):
     facts.pop("grade_confirmed", None)
 
 
+def route_sector(training, facts):
+    return facts.get("section_id") or next((section.id for section in reversed(training.sections)
+        if section.location_id == training.primary_location_id), None)
+
+
 async def choose(session, user, job, training, facts, field, kind, query, parent, reply, offset=0):
     result = await search(session, user.id, kind, query, parent, offset)
     token = secrets.token_hex(4)
     selection = {"token": token, "field": field, "kind": kind, "query": query, "parent": parent,
                  "ids": [x["id"] for x in result["items"]]}
+    if kind == "routes":
+        selection["browse_parent"] = route_sector(training, facts)
     await dialog_set(session, user.id, "catalog_choice", {"form": "attempt_capture", "training_id": training.id,
         "token": job.id, "facts": facts, "selection": selection})
     keyboard = []
@@ -50,9 +57,11 @@ async def choose(session, user, job, training, facts, field, kind, query, parent
         else:
             keyboard.append([button("➕ Создать свою запись", f"cn:{token}")])
     keyboard.append([button("Отмена", "/cancel")])
-    await reply(session, job, f"Выберите {LABELS[field]} из БД" + (f" для «{query}»" if query else "") +
+    heading = "Выберите трассу из этого сектора" if kind == "routes" and parent and not query else f"Выберите {LABELS[field]} из БД"
+    hint = "Можно написать название для поиска по всему доступному каталогу." if kind == "routes" else "Можно написать другое название для поиска."
+    await reply(session, job, heading + (f" для «{query}»" if query else "") +
         (". Совпадений не найдено." if not result["items"] else ".") +
-        "\nМожно написать другое название для поиска. Новая запись создаётся только в личном каталоге.", keyboard)
+        "\n" + hint + " Новая запись создаётся только в личном каталоге.", keyboard)
 
 
 def grade_key(value):
@@ -162,7 +171,7 @@ async def handle(session, user, job, reply):
         if command == "training:location":
             facts["place_only"] = True
         else:
-            await choose(session, user, job, training, facts, "name", "routes", "", None, reply)
+            await choose(session, user, job, training, facts, "name", "routes", "", route_sector(training, facts), reply)
             return True
         await complete_facts(session, user, job, training, facts, reply, browse=True)
         return True
@@ -225,7 +234,10 @@ async def handle(session, user, job, reply):
         if not query and not callback:
             return True
         if selection.get("parent") or field == "region" or selection.get("kind") == "routes":
-            await choose(session, user, job, training, facts, field, selection["kind"], query, selection.get("parent"), reply, offset)
+            parent = selection.get("parent")
+            if selection["kind"] == "routes":
+                parent = None if query else selection.get("browse_parent", parent)
+            await choose(session, user, job, training, facts, field, selection["kind"], query, parent, reply, offset)
         else:
             await new_child(session, user, job, training, facts, field, selection["kind"], query, reply)
         return True
