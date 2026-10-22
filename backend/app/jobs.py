@@ -60,7 +60,7 @@ async def ingest(session, raw: dict) -> dict:
                                                  Job.status.in_(["pending", "processing"])))
         if queued >= cfg.ai_queue_per_user:
             lane, command = "fast", "quota:queued"
-    read_only = command.startswith(("stats:", "gear:menu", "training:details:")) or command in ("/stats", "/journal", "journal", "stats:menu", "profile", "/profile", "/gear")
+    read_only = command.startswith(("stats:", "gear:menu", "training:details:")) or command in ("/stats", "/journal", "journal", "stats:menu", "profile", "/profile", "/gear", "training:location")
     if command in ("training:finish", "training:finish:cancel", "/finish"):
         read_only = True  # The handler offers wait/cancel instead of waiting behind AI.
     if command == "/cancel" and dialog and dialog.data.get("form") == "attempt_capture":

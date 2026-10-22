@@ -152,11 +152,11 @@ async def new_child(session, user, job, training, facts, field, kind, value, rep
 
 
 async def handle(session, user, job, reply):
-    from app.attempt_capture import valid_draft, complete_facts
+    from app.attempt_capture import valid_draft, complete_facts, place
     command = job.payload["command"]
     dialog = await session.get(DialogState, user.id)
     callback = command.startswith(("cs:", "cn:", "cp:", "cb:", "cg:"))
-    opening = command in ("catalog:choose", "training:location")
+    opening = command in ("catalog:choose", "training:location", "training:location:change")
     selection = dialog.data.get("selection", {}) if dialog else {}
     editing = dialog and dialog.state == "catalog_choice" and job.lane == "fast" and not command.startswith((
         "/", "stats:", "training:", "attempt:", "am:", "tr:", "trainings:", "trainings-test:", "test:", "gear:", "catalog:", "rs:")) and command not in ("journal", "profile")
@@ -166,9 +166,16 @@ async def handle(session, user, job, reply):
     if not training or (not opening and not valid_draft(dialog, training.id)):
         await reply(session, job, "Выбор устарел. Откройте текущую тренировку заново.", menu(bool(training)))
         return True
+    if command == "training:location":
+        current = await place(session, training)
+        await reply(session, job, "📍 Место текущей тренировки\n"
+            f"Регион: {current['region'] or 'Не указан'}\nСектор: {current['sector'] or 'Не указан'}",
+            [[button("✏️ Изменить место" if current["region"] else "📍 Указать место", "training:location:change")],
+             [button("← Текущая тренировка", "training:details:current")]])
+        return True
     if opening:
         facts = dict(dialog.data.get("facts", {})) if command == "catalog:choose" and valid_draft(dialog, training.id) else {}
-        if command == "training:location":
+        if command == "training:location:change":
             facts["place_only"] = True
         else:
             await choose(session, user, job, training, facts, "name", "routes", "", route_sector(training, facts), reply)
