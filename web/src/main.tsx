@@ -46,6 +46,7 @@ import {
 } from "./statistics-view";
 import "./style.css";
 import { Pyramid } from "./Pyramid";
+import { AttemptForm } from "./AttemptForm";
 type Page = "overview" | "progress" | "trainings" | "profile";
 const navigation = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
@@ -120,6 +121,7 @@ function App() {
   const [preset, setPreset] = useState("month");
   const [mobile, setMobile] = useState(false);
   const [selected, setSelected] = useState<Training | null>(null);
+  const [capture, setCapture] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [csrf, setCsrf] = useState("");
   const [loginEnabled, setLoginEnabled] = useState(false);
@@ -400,9 +402,15 @@ function App() {
                     }[page]}
               </p>
             </div>
-            <span className="heading-mark">
-              <Mountain size={52} strokeWidth={1} />
-            </span>
+            {user && !busy ? (
+              <button className="capture-open" onClick={() => setCapture(true)}>
+                + Записать пролаз
+              </button>
+            ) : (
+              <span className="heading-mark">
+                <Mountain size={52} strokeWidth={1} />
+              </span>
+            )}
           </div>
           {isDemo && (
             <div className="demo-banner">
@@ -1207,6 +1215,18 @@ function App() {
                 </>
               )}
             </>
+          )}
+          {capture && user && (
+            <AttemptForm
+              csrf={csrf}
+              demo={isDemo}
+              timezone={user.timezone}
+              onClose={() => setCapture(false)}
+              onSaved={() => {
+                setCapture(false);
+                setRetry((v) => v + 1);
+              }}
+            />
           )}
           <footer>
             <span>

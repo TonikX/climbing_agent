@@ -183,6 +183,21 @@ class AccountBlock(Strict):
     blocked: bool
 
 
+class WebAttemptCreate(SummaryAttempt):
+    """One transaction creates any private catalogue entries and the attempt."""
+    grade: str = Field(min_length=1, max_length=30)
+    reached_top: bool
+    clean_ascent: bool
+    belay: Literal["lead", "top_rope", "auto_belay", "bouldering"]
+    date: date
+    training_id: str | None = None
+    location_id: str | None = None
+    section_id: str | None = None
+    region: str = Field(min_length=1, max_length=200)
+    sector: str = Field(min_length=1, max_length=200)
+    environment: Literal["indoor", "outdoor"] = "outdoor"
+
+
 class StatisticsSummary(BaseModel):
     model_config = ConfigDict(extra="allow")
     routesCount: int = 0

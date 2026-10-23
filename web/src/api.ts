@@ -104,14 +104,18 @@ export class ApiError extends Error {
         ? "Войдите, чтобы увидеть свою статистику."
         : status === 403
           ? "Доступ к журналу пока не подтверждён."
-          : "Не удалось загрузить данные. Попробуйте ещё раз.",
+          : status === 409
+            ? "Тренировка уже изменена или завершена. Откройте форму заново."
+            : status === 422
+              ? "Проверьте заполненные поля и результат пролаза."
+              : "Не удалось выполнить запрос. Попробуйте ещё раз.",
     );
   }
 }
 export async function request<T>(
   path: string,
   signal?: AbortSignal,
-  mutation?: { csrf: string; method: "POST" },
+  mutation?: { csrf: string; method: "POST"; body?: unknown; key?: string },
 ): Promise<T> {
   const r = await fetch("/api/v1" + path, {
     credentials: "include",
@@ -120,7 +124,13 @@ export async function request<T>(
     headers: {
       Accept: "application/json",
       ...(mutation ? { "X-CSRF-Token": mutation.csrf } : {}),
+      ...(mutation?.body !== undefined
+        ? { "Content-Type": "application/json" }
+        : {}),
+      ...(mutation?.key ? { "Idempotency-Key": mutation.key } : {}),
     },
+    body:
+      mutation?.body !== undefined ? JSON.stringify(mutation.body) : undefined,
   });
   if (!r.ok) throw new ApiError(r.status);
   if (r.status === 204) return undefined as T;
