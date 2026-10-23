@@ -18,7 +18,7 @@ from app.tool_service import _area, _area_dict, _get_current, _route, _route_dic
 from app.profile_service import ProfileService
 from app.idempotency import run_mutation
 from app.application_services import StatisticsService, TrainingService
-from app.public_schemas import PyramidPageDTO
+from app.public_schemas import PyramidPageDTO, WebAttemptCreate
 
 router = APIRouter(prefix="/api/v1")
 internal = APIRouter(prefix="/api/v1/internal", dependencies=[Depends(require_internal_key)], include_in_schema=False)
@@ -99,6 +99,14 @@ async def summary_create(command: SummaryCreate, session: Session, uid: UserId, 
             await versioned_training(session, uid, active.id, command.expected_version)
         return await execute_tool(session, "save_climbing_training", user_payload(payload, uid))
     return await run_mutation(session, uid, "rest:summary", key, command.model_dump(mode="json", exclude_unset=True), action)
+
+
+@router.post("/web-attempts", status_code=201)
+async def web_attempt_create(command: WebAttemptCreate, session: Session, uid: UserId, key: Key = None):
+    from app.web_attempts import save
+    async def action():
+        return await save(session, uid, command)
+    return await run_mutation(session, uid, "rest:web-attempt", key, command.model_dump(mode="json"), action, 201)
 
 
 @router.patch("/gear/{gear_id}")

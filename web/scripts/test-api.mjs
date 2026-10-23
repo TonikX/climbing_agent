@@ -15,6 +15,40 @@ const js = ts.transpileModule(source, {
 const api = await import(
   "data:text/javascript;base64," + Buffer.from(js).toString("base64")
 );
+
+test("attempt mutation sends JSON, session CSRF and stable retry key", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "/api/v1/web-attempts");
+    assert.equal(options.credentials, "include");
+    assert.equal(options.method, "POST");
+    assert.equal(options.headers["X-CSRF-Token"], "csrf");
+    assert.equal(options.headers["Idempotency-Key"], "retry-once");
+    assert.equal(options.headers["Content-Type"], "application/json");
+    assert.deepEqual(JSON.parse(options.body), {
+      reached_top: false,
+      clean_ascent: false,
+    });
+    return new Response(JSON.stringify({ trainingId: "training" }), {
+      status: 201,
+    });
+  };
+  try {
+    assert.equal(
+      (
+        await api.request("/web-attempts", undefined, {
+          method: "POST",
+          csrf: "csrf",
+          key: "retry-once",
+          body: { reached_top: false, clean_ascent: false },
+        })
+      ).trainingId,
+      "training",
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
 const viewSource = await readFile(
   new URL("../src/statistics-view.ts", import.meta.url),
   "utf8",

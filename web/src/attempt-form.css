@@ -1,0 +1,217 @@
+.capture-dialog {
+  width: min(760px, calc(100% - 24px));
+  max-height: 92dvh;
+  padding: 28px;
+  border: 1px solid #dce4d8;
+  border-radius: 20px;
+  color: #233e35;
+  background: #fafbf7;
+  box-shadow: 0 24px 100px #13281f44;
+}
+.capture-dialog::backdrop {
+  background: #142c26a8;
+  backdrop-filter: blur(3px);
+}
+.capture-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+}
+.capture-heading h2 {
+  font-size: 27px;
+  margin: 8px 0;
+}
+.capture-heading button {
+  background: transparent;
+  border: 0;
+  padding: 9px;
+}
+.capture-intro,
+.capture-hint,
+.capture-catalog small,
+.capture-training small {
+  color: #68796c;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.capture-dialog fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.capture-dialog h3 {
+  margin: 24px 0 12px;
+  font-size: 17px;
+}
+.capture-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.capture-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.capture-dialog input:not([type="checkbox"]),
+.capture-dialog select,
+.capture-dialog textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #cbd6c9;
+  border-radius: 8px;
+  background: white;
+  color: #233e35;
+  font: inherit;
+}
+.capture-dialog textarea {
+  resize: vertical;
+}
+.capture-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+.capture-search > svg:first-child {
+  position: absolute;
+  left: 10px;
+  color: #829380;
+}
+.capture-search input {
+  padding-left: 32px !important;
+}
+.capture-search > svg:last-child:not(:first-child) {
+  position: absolute;
+  right: 10px;
+}
+.capture-catalog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.capture-catalog > label { display: block; }
+.capture-options {
+  max-height: 230px;
+  overflow: auto;
+  border: 1px solid #dce4d8;
+  border-radius: 8px;
+  background: white;
+}
+.capture-options button {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  text-align: left;
+  padding: 10px;
+  border: 0;
+  border-bottom: 1px solid #e9eee5;
+  background: white;
+  font-size: 12px;
+  gap: 4px;
+}
+.capture-options button:hover,
+.capture-options button:focus-visible {
+  background: #edf3e7;
+}
+.capture-options p {
+  font-size: 12px;
+  padding: 0 10px;
+}
+.capture-training {
+  background: #edf2e7;
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.capture-training small {
+  display: block;
+  font-weight: 400;
+  margin: 5px 0;
+}
+.capture-training .capture-grid {
+  margin-top: 12px;
+}
+.capture-counts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 20px 0;
+}
+.capture-dialog .capture-check {
+  flex-direction: row;
+  align-items: center;
+  font-weight: 400;
+  margin: 17px 0;
+}
+.capture-check input {
+  accent-color: #315c41;
+  width: 18px;
+  height: 18px;
+}
+.capture-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 15px;
+  border-top: 1px solid #dce4d8;
+}
+.capture-footer button,
+.capture-submit,
+.capture-open {
+  border: 1px solid #cad6c6;
+  background: transparent;
+  border-radius: 8px;
+  padding: 12px 18px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.capture-footer .capture-submit,
+.capture-submit,
+.capture-open {
+  color: white;
+  background: #315c41;
+  border-color: #315c41;
+}
+.capture-error {
+  border: 1px solid #d5aaa0;
+  background: #fbefeb;
+  color: #852e24;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.capture-notice {
+  font-size: 12px;
+  color: #866e32;
+}
+.capture-success {
+  text-align: center;
+  padding: 36px 12px;
+}
+.capture-success > svg {
+  color: #48744b;
+}
+.capture-success p {
+  line-height: 1.6;
+}
+@media (max-width: 560px) {
+  .capture-dialog {
+    padding: 19px;
+  }
+  .capture-grid {
+    grid-template-columns: 1fr;
+  }
+  .capture-counts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .capture-heading h2 {
+    font-size: 23px;
+  }
+}
