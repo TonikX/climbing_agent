@@ -60,3 +60,22 @@ class OutcomeTest(unittest.TestCase):
             self.assertTrue(outcome({"style": "flash", "falls": 0, "notes": notes})["clean_ascent"])
         self.assertFalse(outcome({"style": "flash", "reachedTop": True, "falls": 1, "notes": "Срывов не было"})["clean_ascent"])
         self.assertFalse(outcome({"style": "flash", "reachedTop": True, "notes": "Без срывов, но завис на верёвке"})["clean_ascent"])
+
+    def test_clean_styles_infer_zero_counters_without_erasing_evidence(self):
+        from app.attempt_outcome import with_clean_counters, infer_facts
+        from app.attempt_capture import clear_inferred
+        for style in ("redpoint", "flash", "onsight"):
+            for raw in ({"style":style}, {"style":style, "falls":None, "hangs":None}):
+                resolved = with_clean_counters(raw)
+                self.assertEqual((resolved["falls"], resolved["hangs"]), (0, 0))
+            contradictory = {"style":style, "falls":2}
+            self.assertEqual(with_clean_counters(contradictory), contradictory)
+            self.assertFalse(outcome(contradictory)["clean_ascent"])
+        facts = {"style":"flash"}
+        infer_facts(facts)
+        self.assertEqual((facts["falls"], facts["hangs"]), (0, 0))
+        clear_inferred(facts)
+        facts["style"] = "with_hangs"
+        infer_facts(facts)
+        self.assertNotIn("falls", facts)
+        self.assertNotIn("hangs", facts)

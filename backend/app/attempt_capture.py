@@ -14,7 +14,7 @@ from app.attempt_fields import FIELDS, missing_fields
 def clear_inferred(facts):
     # Recompute implications when a clarification contradicts an earlier draft.
     for key in facts.pop("_inferred_facts", []):
-        if key in ("reached_top", "clean_ascent", "style"):
+        if key in ("reached_top", "clean_ascent", "style", "falls", "hangs"):
             facts.pop(key, None)
 
 

@@ -105,14 +105,27 @@ def outcome(raw: dict, current=None, *, require_complete=False) -> dict:
     return {"reached_top": top, "clean_ascent": clean, "result": legacy}
 
 
+def with_clean_counters(raw, current=None):
+    """A confirmed clean style implies zero falls and hangs, never erase evidence."""
+    style = raw.get("style", getattr(current, "style", None))
+    if style not in ("onsight", "flash", "redpoint") or outcome(raw, current)["clean_ascent"] is not True:
+        return raw
+    result = dict(raw)
+    for field in ("falls", "hangs"):
+        if raw.get(field, getattr(current, field, None)) is None:
+            result[field] = 0
+    return result
+
+
 def infer_facts(facts):
     """Fill only logically determined draft facts; track them for later corrections."""
     raw = {**facts, **{camel: facts[snake] for snake, camel in
         (("reached_top", "reachedTop"), ("clean_ascent", "cleanAscent")) if snake in facts}}
+    raw = with_clean_counters(raw)
     resolved = outcome(raw, require_complete=False)
     style = normalized_style(raw, require_complete=False)
     inferred = list(facts.get("_inferred_facts", []))
-    for key, value in {**{k: resolved[k] for k in ("reached_top", "clean_ascent")}, "style": style}.items():
+    for key, value in {**{k: resolved[k] for k in ("reached_top", "clean_ascent")}, "style": style, **{k: raw[k] for k in ("falls", "hangs") if k in raw}}.items():
         if value is not None and value != "unknown":
             if facts.get(key) != value and key not in inferred:
                 inferred.append(key)

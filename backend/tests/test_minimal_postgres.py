@@ -44,3 +44,21 @@ class MinimalPostgresTest(unittest.IsolatedAsyncioTestCase):
         for column in ("reached_top", "clean_ascent"):
             nullable = await self.conn.scalar(text("SELECT is_nullable FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='route_attempts' AND column_name=:column"), {"column":column})
             self.assertEqual(nullable, "YES")
+
+    async def test_clean_styles_store_zero_counters_on_create_and_edit(self):
+        headers = await self.login("901")
+        training = (await self.client.post("/api/v1/trainings", headers=headers, json={"date":"2026-10-26"})).json()
+        url = f"/api/v1/trainings/{training['id']}/attempts"
+        for style in ("flash", "redpoint", "onsight"):
+            response = await self.client.post(url, headers=headers, json={"name":style, "style":style, "belay":"lead"})
+            self.assertEqual(response.status_code, 201, response.text)
+            row = response.json()
+            self.assertEqual((row["falls"], row["hangs"], row["clean_ascent"]), (0, 0, True))
+        response = await self.client.post(url, headers=headers, json={"name":"Edit", "belay":"lead"})
+        row = response.json()
+        version = (await self.client.get(f"/api/v1/trainings/{training['id']}", headers=headers)).json()["version"]
+        response = await self.client.patch(f"/api/v1/attempts/{row['id']}", headers=headers,
+            json={"expected_version":version, "style":"redpoint"})
+        self.assertEqual(response.status_code, 200, response.text)
+        row = (await self.conn.execute(text("SELECT falls,hangs,clean_ascent FROM route_attempts WHERE id=:id"), {"id":row["id"]})).one()
+        self.assertEqual(tuple(row), (0, 0, True))

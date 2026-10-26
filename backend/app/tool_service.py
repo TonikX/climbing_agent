@@ -11,7 +11,7 @@ from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.attempt_outcome import normalized_style, outcome, validated_belay
+from app.attempt_outcome import normalized_style, outcome, validated_belay, with_clean_counters
 from app.idempotency import run_mutation
 from app.models import ExternalRef, Gear, Location, Route, RouteAttempt, Section, TrainingSession, User
 
@@ -292,6 +292,7 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
         RouteAttempt.route_session_key == route_session_key))) + 1
     if not route and not raw.get("name"):
         raise _bad("Specify route name or routeId")
+    raw = with_clean_counters(raw)
     facts = outcome(raw)
     belay = validated_belay(raw)
     falls = raw.get("falls")
@@ -447,6 +448,7 @@ async def _save(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
             raise _bad("Summary matches multiple attempts; correct them by attemptId instead of adding a route summary", 409)
         if merged and len(candidates) == 1:
             item = candidates[0]
+            raw = with_clean_counters(raw, item)
             facts = outcome(raw, item)
             belay = validated_belay(raw, item)
             style = normalized_style(raw, item)
@@ -507,6 +509,7 @@ async def _attempt_target(session: AsyncSession, user_id: str, p: dict[str, Any]
 async def _update_attempt(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     user = await _user(session, p["user"])
     item = await _attempt_target(session, user.id, p)
+    p = with_clean_counters(p, item)
     facts = outcome(p, item)
     belay = validated_belay(p, item)
     style = normalized_style(p, item)
