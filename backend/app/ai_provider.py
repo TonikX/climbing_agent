@@ -64,7 +64,7 @@ async def interpret(payload: dict, bot: Bot, check_lease=None) -> tuple[Intent, 
             "not_reached implies reached_top=false and clean_ascent=false; reached_top=false implies not_reached. "
             "A nonclean ascent alone does NOT imply not reaching the top. Use empty notes or zero counts when explicitly cleared. "
             "Верхняя/сверху/на верхней means ONLY belay=top_rope, never a style; leave an unmentioned style unknown. "
-            "reached_top and clean_ascent are mandatory before saving; leave missing facts null so the backend asks. Never guess reached_top from a fall or hang. "
+            "Only route name and belay are required to save. Other missing facts remain null (style=unknown); do not ask for them. Never fill missing counters with zero or missing outcomes with false. Never guess reached_top from a fall or hang. "
             "When flash/onsight/redpoint is explicitly stated with upper belay, keep that style and set belay=top_rope. "
             "Copy route name and grade verbatim. Use null for unmentioned optional facts; unmentioned style/belay are unknown. "
             "Styles onsight/flash/redpoint imply clean and reached_top only absent falls/hangs. "

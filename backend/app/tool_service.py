@@ -290,6 +290,8 @@ async def _attempt(session: AsyncSession, training: TrainingSession, area: Locat
     attempt_number = int(await session.scalar(select(func.coalesce(func.max(RouteAttempt.attempt_number), 0)).where(
         RouteAttempt.training_id == training.id,
         RouteAttempt.route_session_key == route_session_key))) + 1
+    if not route and not raw.get("name"):
+        raise _bad("Specify route name or routeId")
     facts = outcome(raw)
     belay = validated_belay(raw)
     falls = raw.get("falls")
@@ -707,6 +709,8 @@ async def _get_current(session: AsyncSession, p: dict[str, Any]) -> dict[str, An
 
 async def _set_test_mode(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any]:
     user = await _user(session, p["user"])
+    if user.role != "admin":
+        raise _bad("Test mode is available only to administrators", 403)
     user.test_mode_enabled = bool(p["enabled"])
     await session.flush()
     return {"success": True, "enabled": user.test_mode_enabled}

@@ -83,6 +83,8 @@ async def resolve(session, user, job, training, facts, reply, browse=False):
             elif matches:
                 await choose(session, user, job, training, facts, "name", "routes", facts["name"], None, reply)
                 return False
+    if not facts.get("place_only") and not browse and not facts.get("route_id") and not (facts.get("region") and facts.get("sector")):
+        return True
     parent = None
     for field, kind, key in LEVELS:
         if field == "name" and facts.get("place_only"):
@@ -243,7 +245,7 @@ async def handle(session, user, job, reply):
         else:
             await new_child(session, user, job, training, facts, field, selection["kind"], query, reply)
         return True
-    await complete_facts(session, user, job, training, facts, reply, browse=True)
+    await complete_facts(session, user, job, training, facts, reply, browse=bool(facts.get("place_only")))
     return True
 
 

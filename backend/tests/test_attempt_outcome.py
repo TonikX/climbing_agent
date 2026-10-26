@@ -14,8 +14,7 @@ class OutcomeTest(unittest.TestCase):
         self.assertFalse(outcome({"cleanAscent": True, "reachedTop": False}, current)["clean_ascent"])
 
     def test_independent_facts_and_legacy_uncertainty(self):
-        with self.assertRaises(HTTPException):
-            outcome({"reachedTop": True})
+        self.assertIsNone(outcome({"reachedTop": True})["clean_ascent"])
         self.assertEqual(outcome({"cleanAscent": True})["reached_top"], True)
         self.assertEqual(outcome({"reachedTop": False})["clean_ascent"], False)
         self.assertEqual(outcome({"reachedTop": True, "falls": 2})["clean_ascent"], False)
@@ -32,8 +31,7 @@ class OutcomeTest(unittest.TestCase):
         item = SimpleNamespace(reached_top=True, clean_ascent=True, falls=0)
         self.assertTrue(outcome({"notes": "updated"}, item)["clean_ascent"])
         self.assertFalse(outcome({"falls": 1}, item)["clean_ascent"])
-        with self.assertRaises(HTTPException):
-            outcome({"cleanAscent": None}, item)
+        self.assertIsNone(outcome({"cleanAscent": None}, item)["clean_ascent"])
 
     def test_statistics_only_count_confirmed_clean_styles(self):
         attempts = [SimpleNamespace(id=str(i), route_session_key=str(i), sequence=i,

@@ -23,7 +23,7 @@ def has_nonclean_evidence(raw: dict, current=None) -> bool:
         r"срыв|сорв|завис|повис|с\s+перерыв", normalized))
 
 
-def normalized_style(raw: dict, current=None, *, require_complete=True) -> str:
+def normalized_style(raw: dict, current=None, *, require_complete=False) -> str:
     style = str(raw.get("style", getattr(current, "style", "unknown")) or "unknown")
     if style == "top_rope" and "style" not in raw:
         style = "unknown"  # Read legacy rows without accepting upper belay as a new style.
@@ -50,7 +50,7 @@ def validated_belay(raw: dict, current=None) -> str:
     return value
 
 
-def outcome(raw: dict, current=None, *, require_complete=True) -> dict:
+def outcome(raw: dict, current=None, *, require_complete=False) -> dict:
     if "hangs" in raw and raw["hangs"] is not None and (type(raw["hangs"]) is not int or raw["hangs"] < 0):
         raise HTTPException(422, "hangs must be a non-negative integer or null")
     if any(key in raw and raw[key] is not None and type(raw[key]) is not bool

@@ -31,7 +31,6 @@ def button(text: str, data: str) -> dict:
 
 def active_training_actions(training) -> list:
     return [[button("💬 Записать пролаз", "attempt:ai")],
-            [button("📚 Выбрать трассу из БД", "catalog:choose")],
             [button("📍 Место тренировки", "training:location")],
             [button("📅 Изменить дату", f"td:{training.id}:{training.version}")],
             [button("Завершить тренировку", "training:finish")],
@@ -39,9 +38,17 @@ def active_training_actions(training) -> list:
 
 
 STYLE_NAMES = {"onsight": "Onsight", "flash": "Flash", "redpoint": "Red Point",
-               "with_falls": "Со срывом", "with_hangs": "С зависанием", "not_reached": "Не долез", "unknown": "Не указан"}
+               "with_falls": "Со срывом", "with_hangs": "С зависанием", "not_reached": "Не долез", "unknown": "Неизвестно"}
 BELAY_NAMES = {"lead": "Нижняя", "top_rope": "Верхняя", "auto_belay": "Автостраховка",
-               "bouldering": "Боулдеринг", "unknown": "Не указана"}
+               "bouldering": "Боулдеринг", "unknown": "Неизвестно"}
+
+
+def known_value(value):
+    return "Неизвестно" if value is None or value == "" or value == "unknown" else str(value)
+
+
+def known_boolean(value):
+    return "Да" if value is True else "Нет" if value is False else "Неизвестно"
 
 
 def ascent_card(item, region=None, sector=None):
@@ -49,30 +56,34 @@ def ascent_card(item, region=None, sector=None):
     from app.grades import normalize_grade
     snapshot = item.route_snapshot or {}
     return (("🧪 Тестовая запись — не учитывается в статистике.\n" if item.is_test else "") +
-            f"Регион: {region or 'Не указан'}\nСектор: {sector or 'Не указан'}\n"
-            f"Название трассы: {route_name(snapshot.get('name')) or 'Не указано'}\nКатегория: {normalize_grade(snapshot.get('grade')) or 'Не указана'}\n"
-            f"Чисто: {'Да' if item.clean_ascent is True else 'Нет'}\n"
-            f"Стиль: {STYLE_NAMES.get(item.style, item.style)}\n"
-            f"Страховка: {BELAY_NAMES.get(item.belay, item.belay)}")
+            f"Регион: {known_value(region)}\nСектор: {known_value(sector)}\n"
+            f"Название трассы: {known_value(route_name(snapshot.get('name')))}\n"
+            f"Категория: {known_value(normalize_grade(snapshot.get('grade')))}\n"
+            f"Дошёл до конца: {known_boolean(item.reached_top)}\n"
+            f"Чисто: {known_boolean(item.clean_ascent)}\n"
+            f"Стиль: {STYLE_NAMES.get(item.style, 'Неизвестно')}\n"
+            f"Страховка: {BELAY_NAMES.get(item.belay, 'Неизвестно')}\n"
+            f"Срывы: {known_value(getattr(item, 'falls', None))}\n"
+            f"Зависания: {known_value(getattr(item, 'hangs', None))}\n"
+            f"Комментарий: {known_value(getattr(item, 'notes', None))}")
 
 
-def menu(active: bool = False) -> list:
+def menu(active: bool = False, admin: bool = False) -> list:
     return [[button("🧗 Текущая тренировка" if active else "Начать тренировку", "training:details:current" if active else "training:start")],
             *([] if active else [[button("↩️ Возобновить последнюю тренировку", "training:resume")]]),
             [button("✏️ Тренировки и пролазы", "trainings:0")],
             [button("📊 Статистика", "stats:menu")],
-            [button("👤 Профиль", "profile"), button("🧪 Тестовый режим", "test:menu")]]
+            [button("👤 Профиль", "profile"), *([button("🧪 Тестовый режим", "test:menu")] if admin else [])]]
 
 
-MENU_COMMANDS = {item["text"]: item["callback_data"] for active in (False, True) for row in menu(active) for item in row}
+MENU_COMMANDS = {item["text"]: item["callback_data"] for active in (False, True) for row in menu(active, admin=True) for item in row}
 MENU_COMMANDS["🏠 Главное меню"] = "journal"
 MENU_COMMANDS["Журнал тренировок"] = "journal"
 MENU_COMMANDS["🧗 Журнал тренировок"] = "journal"
 
 
-def reply_menu(active=False):
-    return {"keyboard": [[{"text": item["text"]} for item in row] for row in menu(active)] +
-            [[{"text": "🏠 Главное меню"}]], "resize_keyboard": True, "is_persistent": True}
+def reply_menu(active=False, admin=False):
+    return {"keyboard": [[{"text": item["text"]} for item in row] for row in menu(active, admin)], "resize_keyboard": True, "is_persistent": True}
 
 
 def stats_menu() -> list:
@@ -203,16 +214,16 @@ def attempts(dto: dict) -> list[str]:
         if not isinstance(records, list):
             records = [route]
         metadata = route.get("route") or route.get("routeSnapshot") or route
-        title = f"{metadata.get('name', 'Трасса')} {metadata.get('grade') or ''}".strip()
+        title = f"{metadata.get('name', 'Трасса')} · {known_value(metadata.get('grade'))}"
         for attempt in records:
-            yn = lambda v: "да" if v is True else "нет" if v is False else "не уточнено"
+            yn = known_boolean
             lines.append(f"№{attempt.get('sequence', attempt.get('number', '?'))} · {title}" + (" · 🧪 тест" if attempt.get("isTest") else "") + f"\n• Дошёл до конца: {yn(attempt.get('reachedTop'))}\n"
                          f"• Пролез чисто: {yn(attempt.get('cleanAscent'))}\n"
-                         f"• Стиль: {STYLE_NAMES.get(attempt.get('style', 'unknown'), 'Не указан')}\n"
-                         f"• Страховка: {BELAY_NAMES.get(attempt.get('belay', 'unknown'), 'Не указана')}\n"
-                         f"• Срывы: {attempt.get('falls') if attempt.get('falls') is not None else 'не уточнено'}" +
-                         f"\n• Зависания: {attempt.get('hangs') if attempt.get('hangs') is not None else 'не уточнено'}" +
-                         (f"\n• Комментарий: {attempt['notes']}" if attempt.get("notes") else ""))
+                         f"• Стиль: {STYLE_NAMES.get(attempt.get('style', 'unknown'), 'Неизвестно')}\n"
+                         f"• Страховка: {BELAY_NAMES.get(attempt.get('belay', 'unknown'), 'Неизвестно')}\n"
+                         f"• Срывы: {attempt.get('falls') if attempt.get('falls') is not None else 'Неизвестно'}" +
+                         f"\n• Зависания: {attempt.get('hangs') if attempt.get('hangs') is not None else 'Неизвестно'}" +
+                         f"\n• Комментарий: {known_value(attempt.get('notes'))}")
     chunks, current = [], "📋 Все попытки\n"
     for line in lines:
         if len(current) + len(line) > 3500:

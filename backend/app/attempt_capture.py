@@ -117,18 +117,19 @@ async def complete_facts(session, user, job, training, facts, reply, browse=Fals
                          "token": job.id, "facts": facts})
         await reply(session, job, "Пролаз пока не сохранён. Уточните:\n" + "\n".join("• " + x for x in missing) +
                     "\nОтветьте текстом или голосом. /cancel — отмена.",
-                    ([[button("✍️ Уточнить вручную", "catalog:manual")]] if facts.get("name") and facts.get("section_id") else [])+
+                    ([[button("✍️ Уточнить вручную", "catalog:manual")]] if facts.get("name") else [])+
                     [[button("📚 Выбрать из каталога", "catalog:choose")]])
         return
     raw = {camel: facts[key] for key, camel in {"name": "name", "grade": "grade", "attempts": "attempts",
         "reached_top": "reachedTop", "clean_ascent": "cleanAscent", "falls": "falls", "hangs": "hangs",
         "style": "style", "belay": "belay", "notes": "notes", "is_test": "isTest"}.items() if key in facts}
-    await private_hierarchy(session, user.id, facts, training)
-    area_raw = {"id": facts["location_id"]}
+    if facts.get("region") and facts.get("sector"):
+        await private_hierarchy(session, user.id, facts, training)
+    area_raw = {"id": facts["location_id"]} if facts.get("location_id") else None
     if facts.get("route_id"):
         raw["routeId"] = facts["route_id"]
     dto = await execute_tool(session, "append_climbing_attempt", {"user": {"id": user.id},
-        "date": training.local_date.isoformat(), "area": area_raw, "sector": {"id": facts["section_id"]}, "attempt": raw}, job.id)
+        "date": training.local_date.isoformat(), "area": area_raw, "sector": {"id": facts["section_id"]} if facts.get("section_id") else None, "attempt": raw}, job.id)
     dialog = await session.get(DialogState, user.id)
     if dialog and dialog.data.get("training_id") == training.id:
         await session.delete(dialog)

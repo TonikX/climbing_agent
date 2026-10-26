@@ -38,11 +38,17 @@ class AttemptClarificationTest(unittest.IsolatedAsyncioTestCase):
     async def test_unknown_style_does_not_erase_known_belay_or_false_outcome(self):
         facts = dict(region="Гейкбаири", sector="Кебап", name="Engesh", grade="6A",
                      reached_top=True, clean_ascent=False, style="unknown", belay="top_rope")
-        reply = AsyncMock()
+        facts.update(location_id="area", section_id="sector")
+        reply, session = AsyncMock(), AsyncMock()
+        session.get.return_value = SimpleNamespace(id="saved", data={})
         with patch("app.catalog_capture.resolve", AsyncMock(return_value=True)), \
-             patch("app.attempt_capture.dialog_set", AsyncMock()):
-            await complete_facts(AsyncMock(), SimpleNamespace(id="user"), SimpleNamespace(id="job"),
-                                 SimpleNamespace(id="training"), facts, reply)
-        bullets = [line for line in reply.call_args.args[2].splitlines() if line.startswith("• ")]
-        self.assertEqual(len(bullets), 1)
-        self.assertTrue(bullets[0].startswith("• Стиль:"))
+             patch("app.catalog_capture.private_hierarchy", AsyncMock()), \
+             patch("app.attempt_capture.card", AsyncMock(return_value="card")), \
+             patch("app.attempt_capture.execute_tool", AsyncMock(return_value={"attemptId":"saved"})) as save:
+            await complete_facts(session, SimpleNamespace(id="user"), SimpleNamespace(id="job"),
+                                 SimpleNamespace(id="training", local_date=now().date()), facts, reply)
+        raw = save.call_args.args[2]["attempt"]
+        self.assertEqual(raw["style"], "unknown")
+        self.assertEqual(raw["belay"], "top_rope")
+        self.assertFalse(raw["cleanAscent"])
+        self.assertTrue(reply.call_args.args[2].startswith("Сохранено."))

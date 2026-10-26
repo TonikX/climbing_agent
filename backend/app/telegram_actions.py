@@ -25,6 +25,15 @@ from app.catalog_capture import handle as handle_catalog
 
 
 async def reply(session, job: Job, value: str, keyboard=None, suffix="", document=None, access_request_id=None, monospace_tables=False):
+    actor = await session.get(User, job.user_id) if job.user_id else None
+    admin = bool(actor and actor.role == "admin")
+    if isinstance(keyboard, dict) and "keyboard" in keyboard:
+        keyboard = reply_menu(bool(await _active(session, job.user_id)), admin=admin)
+    elif isinstance(keyboard, list):
+        keyboard = [[item for item in row if admin or item.get("callback_data") != "test:menu"] for row in keyboard]
+        keyboard = [row for row in keyboard if row]
+        if admin and any(item.get("callback_data") == "profile" for row in keyboard for item in row):
+            keyboard.append([button("🧪 Тестовый режим", "test:menu")])
     if len(value) <= 3500 or document:
         await message(session, job.user_id, job.payload["chat_id"], f"job:{job.id}{suffix}", value, keyboard, document, access_request_id,
                       entities=table_entities(value) if monospace_tables else None)
@@ -47,6 +56,8 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
     if not user:
         raise HTTPException(404, "Account deleted")
     await set_user_context(session, user.id)
+    if user.role != "admin":
+        user.test_mode_enabled = False
     command = job.payload["command"]
     identity = {"user": {"id": user.id}}
     if command.startswith(("approve:", "reject:")):
@@ -149,24 +160,11 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
             await reply(session, job, "Тренировка уже начата.", menu(True))
         else:
             await execute_tool(session, "start_climbing_training", {**identity, "startedAt": now().isoformat()}, job.id)
+            await reply(session, job, "🧗 Тренировка начата!", reply_menu(True, admin=user.role == "admin"))
             await reply(session, job,
-                "🧗 Тренировка начата!\n\n"
-                "Запишите пролаз текстом или голосовым сообщением. Например:\n"
-                "«Гейкбаири, сектор Кебап, трасса Engesh 6a. Долез до конца, не чисто, "
-                "с зависанием, нижняя страховка. Две попытки, одно зависание, без срывов».\n\n"
-                "Что указать:\n"
-                "• Район, сектор и название трассы.\n"
-                "• Категория: например 5c, 6a+, 6b/6b+, 7a.\n"
-                "• Долез до конца: да / нет.\n"
-                "• Чисто: да / нет. При срыве или зависании — нет.\n"
-                "• Стиль: Onsight (с первой попытки без предварительной информации), "
-                "Flash (с первой попытки с информацией о трассе), Red Point (чисто после работы), "
-                "Со срывом или С зависанием.\n"
-                "• Страховка: нижняя / верхняя / автостраховка / боулдеринг.\n\n"
-                "Дополнительно можно указать число попыток, срывов, зависаний и комментарий. "
-                "Если данных не хватит, бот спросит уточнение.\n\n"
-                "В «Текущей тренировке» можно выбрать место, найти трассу в БД и изменить пролазы.",
-                reply_menu(True))
+                "Отправьте текст или голосовое: «Engesh, нижняя страховка».\n"
+                "Обязательны только название трассы и страховка. Остальное можно добавить позже.",
+                [[button("📖 Как записать пролаз", "attempt:help")]], suffix=":help")
     elif command in ("training:finish", "training:finish:cancel", "/finish"):
         pending = list((await session.scalars(select(Job).where(Job.user_id == user.id, Job.id != job.id,
                    Job.lane == "ai", Job.status.in_(["pending", "processing"])).with_for_update())).all())
@@ -232,6 +230,7 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
         await message(session, None, job.payload["chat_id"], f"deleted:{job.id}", "Аккаунт и журнал удалены.")
         return
     elif command.startswith("test:"):
+        await require_approver(session, user, job.payload["telegram_id"], job.payload["chat_id"])
         if command == "test:menu":
             await reply(session, job, "Тестовые записи не участвуют в статистике. Режим применяется к новым пролазам.\n"
                         "Для уже сохранённого пролаза откройте его редактор → «🧪 Тестовая запись» → «Да».",

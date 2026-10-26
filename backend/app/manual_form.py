@@ -13,7 +13,7 @@ from pydantic import ValidationError
 async def handle(session, user, job, reply) -> bool:
     command = job.payload["command"]
     dialog = await session.get(DialogState, user.id)
-    if command in ("attempt:ai", "/attempt"):
+    if command in ("attempt:ai", "attempt:help", "/attempt"):
         if dialog:
             await session.delete(dialog)
             await session.flush()
@@ -22,26 +22,16 @@ async def handle(session, user, job, reply) -> bool:
             await reply(session, job, "Сначала начните тренировку.", menu(False))
         else:
             await reply(session, job,
-                "Опишите пролаз одним сообщением или отправьте голосовое. AI разберёт запись, "
-                "а бот проверит названия по БД и сохранит пролаз в текущей тренировке.\n\n"
-                "Пример:\n«Гейкбаири, сектор Кебап, трасса Engesh 6a. Долез до конца, не чисто, "
-                "с зависанием, нижняя страховка. Две попытки, одно зависание, без срывов».\n\n"
-                "Что указать:\n"
-                "• Район, сектор и название трассы.\n"
-                "• Категория: например 5c, 6a+, 6b/6b+, 7a.\n"
-                "• Долез до конца: да / нет.\n"
-                "• Чисто: да / нет. При срыве или зависании — нет.\n"
-                "• Стиль: Onsight (с первой попытки без предварительной информации), "
-                "Flash (с первой попытки с информацией о трассе), Red Point (чисто после работы), "
-                "Со срывом или С зависанием.\n"
-                "• Страховка: нижняя / верхняя / автостраховка / боулдеринг.\n\n"
-                "Дополнительно можно указать число попыток, срывов, зависаний и комментарий.\n\n"
-                "Можно найти трассу в БД или заполнить пролаз вручную кнопками ниже. "
-                "Поиск по названию работает по всему доступному каталогу. "
-                "Если название неоднозначно или данных не хватает, бот предложит выбор или спросит уточнение перед сохранением.\n\n"
+                "Отправьте текст или голосовое. Достаточно: «Engesh, нижняя страховка».\n\n"
+                "Страховка: нижняя / верхняя / автостраховка / боулдеринг.\n"
+                "По желанию: район, сектор, категория, дошёл до конца (да/нет), чисто (да/нет), "
+                "стиль (Onsight / Flash / Red Point / Не долез / Со срывом / С зависанием), "
+                "число попыток, срывов и зависаний, комментарий.\n\n"
+                "Например: «Гейкбаири, Кебап, Engesh 6a, с зависанием, долез до конца, нижняя».\n"
+                "При срыве или зависании — не чисто. «Не долез» означает, что конец не достигнут и пролаз не чистый. "
+                "Для остальных неуказанных полей будет показано «Неизвестно». Похожие трассы бот предложит на выбор.\n"
                 "/cancel — отменить черновик.",
-                [[button("📚 Выбрать трассу из БД", "catalog:choose")],
-                 [button("✍️ Заполнить вручную", "attempt:form")], [button("← Журнал", "journal")]])
+                [[button("✍️ Заполнить вручную", "attempt:form")], [button("← Журнал", "journal")]])
         return True
     if command in ("profile:timezone", "profile:name", "gear:form"):
         if dialog:
@@ -167,8 +157,10 @@ async def handle(session, user, job, reply) -> bool:
         if not command or len(command) > 200:
             await reply(session, job, "Введите название до 200 символов.")
             return True
-        data["name"], dialog.state = command, "grade"
-        await reply(session, job, "Введите категорию, например 6B или 6B/6B+.")
+        data["name"] = command
+        from app.manual_clarification import advance
+        await advance(session, user, job, active, data, reply)
+        return True
     elif dialog.state == "grade":
         from app.grades import normalize_grade
         command = normalize_grade(command)
@@ -182,8 +174,10 @@ async def handle(session, user, job, reply) -> bool:
         value = command.removeprefix("form:")
         if value not in ("lead", "top_rope", "auto_belay", "bouldering"):
             return True
-        data["belay"], dialog.state = value, "top"
-        await reply(session, job, "Дошли до конца?", [[button("Да", "form:yes"), button("Нет", "form:no")]])
+        data["belay"] = value
+        from app.manual_clarification import advance
+        await advance(session, user, job, active, data, reply)
+        return True
     elif dialog.state == "top":
         if command not in ("form:yes", "form:no"):
             return True

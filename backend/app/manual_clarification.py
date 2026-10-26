@@ -22,6 +22,8 @@ async def advance(session, user, job, training, facts, reply):
     from app.attempt_outcome import infer_facts
     infer_facts(facts)
     for field, (prompt, choices) in CHOICES.items():
+        if field != "belay":
+            continue
         value = facts.get(field)
         if value is not None and value != "" and (value != "unknown" or (field == "style" and facts.get("manual"))):
             continue
