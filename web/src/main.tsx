@@ -18,9 +18,6 @@ import {
   ArrowUpRight,
   ChevronRight,
   ArrowLeft,
-  Check,
-  Flame,
-  Flag,
   Menu,
   X,
   ExternalLink,
@@ -274,14 +271,9 @@ function App() {
   const authenticated = !!user;
   const counts = [
     ["Тренировки", s?.trainingsCount, NotebookTabs],
-    ["Выходы на трассы", s?.routesCount, Mountain],
-    ["Попытки", s?.attemptsCount, Flame],
-    ["Дошёл до конца", s?.reachedTopRoutes, Flag],
-    ["Чистые пролазы", s?.completedRoutes, Check],
+    ["Пролазы", s?.routesCount, Mountain],
   ] as const;
-  const visibleCounts = advanced
-    ? counts
-    : counts.filter((_, i) => [0, 1, 4].includes(i));
+
   return (
     <div className="shell">
       <aside className={mobile ? "sidebar open" : "sidebar"}>
@@ -762,14 +754,11 @@ function App() {
                     <>
                       {page === "overview" && (
                         <>
-                          <div className={"kpis" + (advanced ? "" : " simple")}>
-                            {visibleCounts.map(([title, value, Icon]) => (
+                          <div className="kpis">
+                            {counts.map(([title, value, Icon]) => (
                               <div
                                 key={title}
-                                className={
-                                  "kpi " +
-                                  (title === "Чистые пролазы" ? "accent" : "")
-                                }
+                                className="kpi"
                               >
                                 <div>
                                   <span>{title}</span>
@@ -777,11 +766,7 @@ function App() {
                                 </div>
                                 <strong>{value ?? "—"}</strong>
                                 <small>
-                                  {title === "Выходы на трассы"
-                                    ? "Выходы на трассы за период"
-                                    : title === "Чистые пролазы"
-                                      ? "Без срывов и зависаний"
-                                      : "За выбранный период"}
+                                  За выбранный период
                                 </small>
                               </div>
                             ))}
