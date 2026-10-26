@@ -25,6 +25,8 @@ def has_nonclean_evidence(raw: dict, current=None) -> bool:
 
 def normalized_style(raw: dict, current=None, *, require_complete=True) -> str:
     style = str(raw.get("style", getattr(current, "style", "unknown")) or "unknown")
+    if style == "top_rope" and "style" not in raw:
+        style = "unknown"  # Read legacy rows without accepting upper belay as a new style.
     if style not in ("onsight", "flash", "redpoint", "with_falls", "with_hangs", "not_reached", "unknown"):
         raise HTTPException(422, "Unknown style; top_rope belongs in belay")
     facts = outcome(raw, current, require_complete=require_complete)
