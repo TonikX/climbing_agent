@@ -23,17 +23,22 @@ def has_nonclean_evidence(raw: dict, current=None) -> bool:
         r"срыв|сорв|завис|повис|с\s+перерыв", normalized))
 
 
-def normalized_style(raw: dict, current=None) -> str:
+def normalized_style(raw: dict, current=None, *, require_complete=True) -> str:
     style = str(raw.get("style", getattr(current, "style", "unknown")) or "unknown")
-    if style not in ("onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"):
+    if style not in ("onsight", "flash", "redpoint", "with_falls", "with_hangs", "not_reached", "unknown"):
         raise HTTPException(422, "Unknown style; top_rope belongs in belay")
+    facts = outcome(raw, current, require_complete=require_complete)
+    if facts["reached_top"] is False:
+        return "not_reached"
+    if style == "not_reached":
+        style = "unknown"  # An explicit successful correction replaces the old failure style.
     if raw.get("falls", getattr(current, "falls", 0)):
         return "with_falls"
     if raw.get("hangs", getattr(current, "hangs", 0)):
         return "with_hangs"
-    if style in ("with_falls", "with_hangs") and outcome(raw, current)["clean_ascent"] is True:
+    if style in ("with_falls", "with_hangs") and facts["clean_ascent"] is True:
         return "unknown"
-    return "unknown" if style in ("onsight", "flash", "redpoint") and outcome(raw, current)["clean_ascent"] is not True else style
+    return "unknown" if style in ("onsight", "flash", "redpoint") and facts["clean_ascent"] is not True else style
 
 
 def validated_belay(raw: dict, current=None) -> str:
@@ -67,6 +72,14 @@ def outcome(raw: dict, current=None, *, require_complete=True) -> dict:
     if "cleanAscent" in raw:
         clean = raw["cleanAscent"]
     style = raw.get("style", getattr(current, "style", "unknown"))
+    if raw.get("style") == "not_reached" and (raw.get("reachedTop") is True or raw.get("cleanAscent") is True):
+        raise HTTPException(422, "not_reached contradicts reaching the top or a clean ascent")
+    if style == "not_reached":
+        corrected = raw.get("reachedTop") is True or raw.get("cleanAscent") is True
+        if corrected:
+            style = "unknown"
+        else:
+            top, clean = False, False
     clean_style = style in ("onsight", "flash", "redpoint")
     nonclean = has_nonclean_evidence(raw, current)
     if clean_style and not nonclean and raw.get("reachedTop") is not False and raw.get("cleanAscent") is not False:
@@ -88,3 +101,21 @@ def outcome(raw: dict, current=None, *, require_complete=True) -> dict:
     if legacy is None:
         legacy = "send" if clean is True else "project" if clean is False else "unknown"
     return {"reached_top": top, "clean_ascent": clean, "result": legacy}
+
+
+def infer_facts(facts):
+    """Fill only logically determined draft facts; track them for later corrections."""
+    raw = {**facts, **{camel: facts[snake] for snake, camel in
+        (("reached_top", "reachedTop"), ("clean_ascent", "cleanAscent")) if snake in facts}}
+    resolved = outcome(raw, require_complete=False)
+    style = normalized_style(raw, require_complete=False)
+    inferred = list(facts.get("_inferred_facts", []))
+    for key, value in {**{k: resolved[k] for k in ("reached_top", "clean_ascent")}, "style": style}.items():
+        if value is not None and value != "unknown":
+            if facts.get(key) != value and key not in inferred:
+                inferred.append(key)
+            facts[key] = value
+    if inferred:
+        facts["_inferred_facts"] = inferred
+    if style == "unknown" and facts.get("style") in ("onsight", "flash", "redpoint"):
+        facts.pop("style")

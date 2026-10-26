@@ -12,7 +12,13 @@ export type Summary = {
 export type PyramidBucket =
   "onsight" | "flash" | "redpoint" | "top_rope" | "other_clean" | "not_clean";
 export type AscentStyle =
-  "onsight" | "flash" | "redpoint" | "with_falls" | "with_hangs" | "unknown";
+  | "onsight"
+  | "flash"
+  | "redpoint"
+  | "with_falls"
+  | "with_hangs"
+  | "not_reached"
+  | "unknown";
 export type Grade = Summary & {
   styles?: Record<AscentStyle, number>;
   belays?: Record<string, number>;

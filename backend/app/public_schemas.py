@@ -30,7 +30,7 @@ class AttemptChanges(Strict):
     grade: str | None = Field(default=None, min_length=1, max_length=30)
     reached_top: bool | None = None
     clean_ascent: bool | None = None
-    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] | None = None
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "not_reached", "unknown"] | None = None
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering"] | None = None
     falls: int | None = Field(default=None, ge=0, le=1000)
     hangs: int | None = Field(default=None, ge=0, le=1000)
@@ -58,7 +58,7 @@ class Intent(Strict):
     clean_ascent: bool | None = None
     falls: int | None = Field(default=None, ge=0, le=1000)
     hangs: int | None = Field(default=None, ge=0, le=1000)
-    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] = "unknown"
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "not_reached", "unknown"] = "unknown"
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] = "unknown"
     attempts: int | None = Field(default=None, ge=1, le=100)
     notes: str | None = Field(default=None, max_length=1000)
@@ -90,7 +90,7 @@ class AttemptPatch(AttemptChanges):
     clean_ascent: bool | None = None
     falls: int | None = Field(default=None, ge=0)
     hangs: int | None = Field(default=None, ge=0)
-    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] | None = None
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "not_reached", "unknown"] | None = None
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering"] | None = None
     notes: str | None = Field(default=None, max_length=1000)
     is_test: bool | None = None
@@ -173,7 +173,7 @@ class SummaryAttempt(Strict):
     clean_ascent: bool | None = None
     falls: int | None = Field(default=None, ge=0)
     hangs: int | None = Field(default=None, ge=0)
-    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] = "unknown"
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "not_reached", "unknown"] = "unknown"
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering"]
     notes: str | None = Field(default=None, max_length=1000)
     is_test: bool = False
@@ -186,8 +186,8 @@ class AccountBlock(Strict):
 class WebAttemptCreate(SummaryAttempt):
     """One transaction creates any private catalogue entries and the attempt."""
     grade: str = Field(min_length=1, max_length=30)
-    reached_top: bool
-    clean_ascent: bool
+    reached_top: bool | None = None
+    clean_ascent: bool | None = None
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering"]
     date: date
     training_id: str | None = None

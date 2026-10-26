@@ -14,7 +14,7 @@ from app.attempt_fields import FIELDS, missing_fields
 def clear_inferred(facts):
     # Recompute implications when a clarification contradicts an earlier draft.
     for key in facts.pop("_inferred_facts", []):
-        if key in ("reached_top", "clean_ascent"):
+        if key in ("reached_top", "clean_ascent", "style"):
             facts.pop(key, None)
 
 
@@ -42,6 +42,19 @@ async def save_or_ask(session, user, job, intent, reply):
         facts.update({k: previous[k] for k in ("name", "grade", "region", "sector") if previous.get(k)})
     # Defaults from Pydantic are not evidence supplied by the user/model.
     supplied = intent.model_dump(exclude_none=True, exclude_unset=True)
+    # A correction replaces dependent draft facts, while contradictory facts in
+    # the same message are still rejected by the shared outcome validator.
+    if supplied.get("style") == "not_reached":
+        for key in ("reached_top", "clean_ascent"):
+            if key not in supplied:
+                facts.pop(key, None)
+    elif facts.get("style") == "not_reached" and (supplied.get("reached_top") is True or
+            supplied.get("clean_ascent") is True or supplied.get("style") in ("onsight", "flash", "redpoint")):
+        facts.pop("style", None)
+        if "reached_top" not in supplied:
+            facts.pop("reached_top", None)
+        if "clean_ascent" not in supplied:
+            facts.pop("clean_ascent", None)
     for key in (*FIELDS, "reached_top", "falls", "hangs", "attempts", "notes"):
         if key in supplied and supplied[key] not in ("", "unknown"):
             if key in ("region", "sector", "name") and supplied[key] != facts.get(key):
@@ -96,24 +109,8 @@ async def complete_facts(session, user, job, training, facts, reply, browse=Fals
             await session.delete(dialog)
         await reply(session, job, "Место тренировки сохранено.\nРегион: "+facts["region"]+"\nСектор: "+facts["sector"], menu(True))
         return
-    from app.attempt_outcome import outcome
-    raw_facts = {**facts, **{camel: facts[snake] for snake, camel in
-        (("reached_top", "reachedTop"), ("clean_ascent", "cleanAscent")) if snake in facts}}
-    resolved = outcome(raw_facts, require_complete=False)
-    inferred = []
-    for key in ("reached_top", "clean_ascent"):
-        if resolved[key] is not None:
-            if facts.get(key) is None:
-                inferred.append(key)
-            facts[key] = resolved[key]
-    if inferred:
-        facts["_inferred_facts"] = inferred
-    if facts.get("falls"):
-        facts["style"] = "with_falls"
-    elif facts.get("hangs"):
-        facts["style"] = "with_hangs"
-    elif facts.get("style") in ("onsight", "flash", "redpoint") and facts.get("clean_ascent") is False:
-        facts.pop("style")
+    from app.attempt_outcome import infer_facts
+    infer_facts(facts)
     missing = [FIELDS[key] for key in missing_fields(facts)]
     if missing:
         await dialog_set(session, user.id, "attempt_missing", {"form": "attempt_capture", "training_id": training.id,

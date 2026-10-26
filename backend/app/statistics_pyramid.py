@@ -8,7 +8,7 @@ from app.models import Location, Section
 
 PyramidBucket = Literal["onsight", "flash", "redpoint", "top_rope", "other_clean", "not_clean"]
 BUCKETS = ("onsight", "flash", "redpoint", "top_rope", "other_clean", "not_clean")
-STYLES = ("onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown")
+STYLES = ("onsight", "flash", "redpoint", "with_falls", "with_hangs", "not_reached", "unknown")
 BELAYS = ("lead", "top_rope", "auto_belay", "bouldering", "unknown")
 
 

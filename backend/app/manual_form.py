@@ -187,21 +187,14 @@ async def handle(session, user, job, reply) -> bool:
     elif dialog.state == "top":
         if command not in ("form:yes", "form:no"):
             return True
-        data["reachedTop"], dialog.state = command == "form:yes", "style"
-        await reply(session, job, "Стиль попытки?", [[button("Onsight", "form:onsight"), button("Flash", "form:flash")],
-                       [button("Red Point", "form:redpoint"), button("Не указан", "form:unknown")],
-                       [button("Со срывом", "form:with_falls"), button("С зависанием", "form:with_hangs")]])
-    elif dialog.state == "style":
-        value = command.removeprefix("form:")
-        if value not in ("onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"):
-            return True
-        data["style"], dialog.state = value, "clean"
-        await reply(session, job, "Пролезли чисто, без срывов и зависаний?", [[button("Да", "form:yes"), button("Нет", "form:no")]])
-    elif dialog.state == "clean":
-        if command not in ("form:yes", "form:no"):
-            return True
-        data["cleanAscent"], dialog.state = command == "form:yes", "falls"
-        await reply(session, job, "Сколько было срывов? Введите число, 0 если не было.")
+        data["reachedTop"] = command == "form:yes"
+        from app.manual_clarification import advance
+        await advance(session, user, job, active, data, reply)
+        return True
+    elif dialog.state in ("style", "clean"):
+        from app.manual_clarification import answer
+        await answer(session, user, job, active, dialog, reply)
+        return True
     elif dialog.state == "falls":
         if not command.isdigit() or int(command) > 1000:
             await reply(session, job, "Введите число срывов от 0 до 1000.")

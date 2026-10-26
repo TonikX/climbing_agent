@@ -19,6 +19,7 @@ const styles = [
   ["redpoint", "Red Point"],
   ["with_falls", "Со срывом"],
   ["with_hangs", "С зависанием"],
+  ["not_reached", "Не долез"],
   ["unknown", "Не указан"],
 ];
 const belays = [
@@ -239,6 +240,7 @@ export function AttemptForm({
     Number(hangs) > 0 ||
     style === "with_falls" ||
     style === "with_hangs" ||
+    style === "not_reached" ||
     top === "false";
   const cleanStyle = ["onsight", "flash", "redpoint"].includes(style);
   useEffect(() => {
@@ -484,7 +486,14 @@ export function AttemptForm({
                 <select
                   required
                   value={top}
-                  onChange={(e) => setTop(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setTop(value);
+                    if (value === "false") {
+                      setStyle("not_reached");
+                      setClean("false");
+                    } else if (style === "not_reached") setStyle("");
+                  }}
                 >
                   <option value="">Выберите</option>
                   <option value="true">Да</option>
@@ -496,7 +505,10 @@ export function AttemptForm({
                 <select
                   required
                   value={clean}
-                  onChange={(e) => setClean(e.target.value)}
+                  onChange={(e) => {
+                    setClean(e.target.value);
+                    if (e.target.value === "true") setTop("true");
+                  }}
                 >
                   <option value="">Выберите</option>
                   <option value="true" disabled={nonclean}>
@@ -510,7 +522,17 @@ export function AttemptForm({
                 <select
                   required
                   value={style}
-                  onChange={(e) => setStyle(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setStyle(value);
+                    if (value === "not_reached") {
+                      setTop("false");
+                      setClean("false");
+                    } else if (style === "not_reached") {
+                      setTop("");
+                      if (cleanStyle) setClean("");
+                    }
+                  }}
                 >
                   <option value="">Выберите</option>
                   {styles.map(([v, l]) => (

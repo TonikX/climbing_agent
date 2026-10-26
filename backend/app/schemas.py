@@ -80,7 +80,7 @@ class AttemptCreate(BaseModel):
     clean_ascent: bool | None = None
     falls: int | None = Field(default=None, ge=0)
     hangs: int | None = Field(default=None, ge=0)
-    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] = "unknown"
+    style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "not_reached", "unknown"] = "unknown"
     belay: Literal["lead", "top_rope", "auto_belay", "bouldering"]
     feel: Literal["easy", "comfortable", "limit", "unknown"] = "unknown"
     notes: str | None = None

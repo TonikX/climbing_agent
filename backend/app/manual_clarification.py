@@ -7,23 +7,20 @@ CHOICES = {
     "reached_top": ("Дошли до конца?", (("Да", "yes"), ("Нет", "no"))),
     "style": ("Стиль попытки?", (("Onsight", "onsight"), ("Flash", "flash"),
               ("Red Point", "redpoint"), ("Со срывом", "with_falls"),
-              ("С зависанием", "with_hangs"), ("Не указан", "unknown"))),
+              ("С зависанием", "with_hangs"), ("Не долез", "not_reached"), ("Не указан", "unknown"))),
     "clean_ascent": ("Пролезли чисто, без срывов и зависаний?", (("Да", "yes"), ("Нет", "no"))),
 }
 
 
 async def advance(session, user, job, training, facts, reply):
-    from app.attempt_capture import complete_facts
+    from app.attempt_capture import complete_facts, place
     from app.attempt_management import dialog_set
     # Normalize drafts already inside the old wizard, preserving its answers.
     for old, new in (("reachedTop", "reached_top"), ("cleanAscent", "clean_ascent")):
         if old in facts:
             facts[new] = facts.pop(old)
-    if facts.get("reached_top") is False or facts.get("falls") or facts.get("hangs") or facts.get("style") in ("with_falls", "with_hangs"):
-        facts["clean_ascent"] = False
-    elif facts.get("style") in ("onsight", "flash", "redpoint") and facts.get("clean_ascent") is not False:
-        facts.setdefault("clean_ascent", True)
-        facts.setdefault("reached_top", True)
+    from app.attempt_outcome import infer_facts
+    infer_facts(facts)
     for field, (prompt, choices) in CHOICES.items():
         value = facts.get(field)
         if value is not None and value != "" and (value != "unknown" or (field == "style" and facts.get("manual"))):
@@ -32,11 +29,17 @@ async def advance(session, user, job, training, facts, reply):
         await reply(session, job, prompt, [[button(label, "form:" + value)] for label, value in choices])
         return
     facts["manual"] = True
+    defaults = await place(session, training)
+    for key in ("region", "sector"):
+        if not facts.get(key) and defaults.get(key):
+            facts[key] = defaults[key]
     await complete_facts(session, user, job, training, facts, reply)
 
 
 async def answer(session, user, job, training, dialog, reply):
     facts = {k: v for k, v in dialog.data.items() if k not in ("form", "training_id")}
+    from app.attempt_capture import clear_inferred
+    clear_inferred(facts)
     field = {"top": "reached_top", "clean": "clean_ascent"}.get(dialog.state, dialog.state)
     # Old forms may already be at optional counters. Do not ask them again.
     if field in ("falls", "hangs"):
@@ -51,6 +54,9 @@ async def answer(session, user, job, training, dialog, reply):
             await advance(session, user, job, training, facts, reply)
             return
         facts[field] = value == "yes" if field in ("reached_top", "clean_ascent") else value
+        if field == "style" and value == "not_reached":
+            facts.pop("reached_top", None)
+            facts.pop("clean_ascent", None)
         if field == "style" and value == "unknown":
             facts["manual"] = True
     await advance(session, user, job, training, facts, reply)

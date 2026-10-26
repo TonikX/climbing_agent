@@ -384,7 +384,7 @@ async def current_statistics(session: Session, uid: UserId):
 async def grade_ascents(session: Session, uid: UserId,
         grade: str = Query(min_length=1, max_length=30),
         style: Literal["onsight", "flash", "redpoint", "top_rope", "other_clean", "not_clean"] | None = None,
-        group_style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "unknown"] | None = None,
+        group_style: Literal["onsight", "flash", "redpoint", "with_falls", "with_hangs", "not_reached", "unknown"] | None = None,
         belay: Literal["lead", "top_rope", "auto_belay", "bouldering", "unknown"] | None = None,
         date_from: str | None = None, date_to: str | None = None,
         region: str | None = Query(default=None, max_length=200),

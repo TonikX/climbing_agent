@@ -37,7 +37,7 @@ class AttemptClarificationTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_unknown_style_does_not_erase_known_belay_or_false_outcome(self):
         facts = dict(region="Гейкбаири", sector="Кебап", name="Engesh", grade="6A",
-                     reached_top=False, clean_ascent=False, style="unknown", belay="top_rope")
+                     reached_top=True, clean_ascent=False, style="unknown", belay="top_rope")
         reply = AsyncMock()
         with patch("app.catalog_capture.resolve", AsyncMock(return_value=True)), \
              patch("app.attempt_capture.dialog_set", AsyncMock()):

@@ -73,6 +73,7 @@ const labels: Record<string, string> = {
   redpoint: "Red Point",
   hang: "С зависанием",
   with_hangs: "С зависанием",
+  not_reached: "Не долез",
   fall: "Со срывом",
   with_falls: "Со срывом",
   unknown: "Не указано",

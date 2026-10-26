@@ -15,6 +15,7 @@ const buckets: { id: AscentStyle; name: string }[] = [
   { id: "redpoint", name: "Red Point" },
   { id: "with_falls", name: "Со срывом" },
   { id: "with_hangs", name: "С зависанием" },
+  { id: "not_reached", name: "Не долез" },
   { id: "unknown", name: "Не указан" },
 ];
 const belays = [
@@ -35,6 +36,7 @@ const names: Record<string, string> = {
   redpoint: "Red Point",
   with_falls: "Со срывом",
   with_hangs: "С зависанием",
+  not_reached: "Не долез",
 };
 const day = (value: string) =>
   new Date(value + "T12:00:00").toLocaleDateString("ru-RU", {

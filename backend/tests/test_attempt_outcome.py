@@ -51,7 +51,7 @@ class OutcomeTest(unittest.TestCase):
         current = SimpleNamespace(reached_top=True, clean_ascent=True, falls=0, style="flash", notes=None)
         for raw, expected in (({"reachedTop": False}, False), ({"cleanAscent": False}, False)):
             self.assertEqual(outcome(raw, current)["clean_ascent"], expected)
-            self.assertEqual(normalized_style(raw, current), "unknown")
+            self.assertEqual(normalized_style(raw, current), "not_reached" if raw.get("reachedTop") is False else "unknown")
         self.assertFalse(outcome({"reachedTop": False}, current)["reached_top"])
         for raw in ({"style": "flash", "reachedTop": "yes"}, {"style": "flash", "cleanAscent": "yes"}):
             with self.assertRaises(HTTPException):

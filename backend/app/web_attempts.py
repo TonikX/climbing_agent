@@ -47,7 +47,10 @@ async def save(session, uid, command):
         training = await start_training(session, uid, TrainingCreate(date=command.date,
             environment=command.environment, location_id=area.id, section_id=section.id))
     raw = command.model_dump(include={"name", "grade", "attempts", "falls", "hangs", "style", "belay", "notes"}, exclude_none=True)
-    raw.update(reachedTop=command.reached_top, cleanAscent=command.clean_ascent, isTest=command.is_test)
+    raw["isTest"] = command.is_test
+    for key, value in (("reachedTop", command.reached_top), ("cleanAscent", command.clean_ascent)):
+        if value is not None:
+            raw[key] = value
     if route:
         raw.update(routeId=route.id, name=route.name)
     attempt = await _attempt(session, training, area, section, raw, force_test=user.test_mode_enabled)

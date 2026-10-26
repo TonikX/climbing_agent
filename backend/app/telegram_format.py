@@ -39,7 +39,7 @@ def active_training_actions(training) -> list:
 
 
 STYLE_NAMES = {"onsight": "Onsight", "flash": "Flash", "redpoint": "Red Point",
-               "with_falls": "Со срывом", "with_hangs": "С зависанием", "unknown": "Не указан"}
+               "with_falls": "Со срывом", "with_hangs": "С зависанием", "not_reached": "Не долез", "unknown": "Не указан"}
 BELAY_NAMES = {"lead": "Нижняя", "top_rope": "Верхняя", "auto_belay": "Автостраховка",
                "bouldering": "Боулдеринг", "unknown": "Не указана"}
 

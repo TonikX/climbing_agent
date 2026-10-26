@@ -122,6 +122,7 @@ export function demoDimensions(g: Grade) {
     redpoint: 0,
     with_falls: 0,
     with_hangs: 0,
+    not_reached: 0,
     unknown: 0,
   };
   const belays: Record<string, number> = {

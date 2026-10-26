@@ -10,7 +10,7 @@ class ManualClarificationTest(unittest.IsolatedAsyncioTestCase):
         facts = dict(region="Гейкбаири", sector="Кебап", name="Engesh", grade="6A",
                      reached_top=True, clean_ascent=False, style="with_hangs", belay="unknown", hangs=5)
         session, reply = AsyncMock(), AsyncMock()
-        user, training = SimpleNamespace(id="user"), SimpleNamespace(id="training")
+        user, training = SimpleNamespace(id="user"), SimpleNamespace(id="training", primary_location_id=None, sections=[])
         job = SimpleNamespace(id="job", payload={"command": "form:lead"})
         with patch("app.attempt_management.dialog_set", AsyncMock()) as store, \
              patch("app.attempt_capture.complete_facts", AsyncMock()) as save:
@@ -25,7 +25,7 @@ class ManualClarificationTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(reply.await_count, 1)
 
     async def test_false_answers_are_known_and_old_counter_form_can_finish(self):
-        user, training = SimpleNamespace(id="user"), SimpleNamespace(id="training")
+        user, training = SimpleNamespace(id="user"), SimpleNamespace(id="training", primary_location_id=None, sections=[])
         data = dict(form="catalog_manual", training_id="training", name="Engesh", grade="6A",
                     reachedTop=False, cleanAscent=False, style="with_falls", belay="lead")
         with patch("app.attempt_capture.complete_facts", AsyncMock()) as save, \
