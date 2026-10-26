@@ -10,7 +10,7 @@ from app.tool_service import _set_test_mode
 
 class MinimalCaptureTest(unittest.IsolatedAsyncioTestCase):
     async def test_minimal_manual_entry_does_not_ask_optional_fields(self):
-        facts = {"name": "Unknown route", "belay": "lead"}
+        facts = {"region":"Area", "sector":"Sector", "grade":"6A", "name": "Unknown route", "belay": "lead"}
         self.assertEqual(missing_fields(facts), [])
         self.assertIsNone(outcome(facts)["clean_ascent"])
         self.assertIsNone(outcome(facts)["reached_top"])
@@ -34,7 +34,7 @@ class MinimalCaptureTest(unittest.IsolatedAsyncioTestCase):
             labels = [x["text"] for row in reply_menu(True, admin)["keyboard"] for x in row]
             self.assertNotIn("🏠 Главное меню", labels)
             self.assertEqual("🧪 Тестовый режим" in labels, admin)
-        self.assertEqual(missing_fields({"name": "Engesh"}), ["belay"])
+        self.assertEqual(missing_fields({"name": "Engesh"}), ["region", "sector", "grade", "belay"])
 
     def test_unknown_fields_are_not_displayed_as_negative_or_zero(self):
         from app.telegram_format import ascent_card, attempts
@@ -52,3 +52,14 @@ class MinimalCaptureTest(unittest.IsolatedAsyncioTestCase):
         details = attempts({"routes":[{"name":"Engesh", "belay":"lead"}]})[0]
         self.assertIn("Пролез чисто: Неизвестно", details)
         self.assertIn("Комментарий: Неизвестно", details)
+
+    async def test_manual_missing_catalogue_fields_are_required_but_outcome_is_not(self):
+        facts = {"name":"Engesh", "belay":"lead"}
+        training = SimpleNamespace(id="t", primary_location_id=None, sections=[])
+        with patch("app.attempt_management.dialog_set", AsyncMock()) as store, \
+             patch("app.attempt_capture.complete_facts", AsyncMock()) as save:
+            await advance(AsyncMock(), SimpleNamespace(id="u"), SimpleNamespace(), training, facts, AsyncMock())
+            self.assertEqual(store.call_args.args[2], "region")
+            save.assert_not_awaited()
+        facts.update(region="Area", sector="Sector", grade="6A")
+        self.assertEqual(missing_fields(facts), [])

@@ -162,8 +162,8 @@ async def complete(session, job: Job, intent: Intent | None = None, tokens: int 
             await execute_tool(session, "start_climbing_training", {**identity, "startedAt": now().isoformat()}, job.id)
             await reply(session, job, "🧗 Тренировка начата!", reply_menu(True, admin=user.role == "admin"))
             await reply(session, job,
-                "Отправьте текст или голосовое: «Engesh, нижняя страховка».\n"
-                "Обязательны только название трассы и страховка. Остальное можно добавить позже.",
+                "Отправьте текст или голосовое: «Гейкбаири, Кебап, Engesh 6a, нижняя страховка».\n"
+                "Нужны район, сектор, трасса, категория и страховка. Известные данные бот возьмёт из БД, недостающие — уточнит.",
                 [[button("📖 Как записать пролаз", "attempt:help")]], suffix=":help")
     elif command in ("training:finish", "training:finish:cancel", "/finish"):
         pending = list((await session.scalars(select(Job).where(Job.user_id == user.id, Job.id != job.id,

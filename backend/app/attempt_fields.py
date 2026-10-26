@@ -7,7 +7,7 @@ FIELDS = {"region": "Регион", "sector": "Сектор", "name": "Назв�
 
 
 def missing_fields(facts):
-    return [key for key in ("name", "belay") if facts.get(key) is None or facts.get(key) == "" or
-            (facts.get(key) == "unknown" and (key == "belay" or not facts.get("manual")))]
+    return [key for key in ("region", "sector", "name", "grade", "belay") if facts.get(key) is None or facts.get(key) == "" or
+            facts.get(key) == "unknown"]
 
 

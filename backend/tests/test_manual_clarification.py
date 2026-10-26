@@ -26,7 +26,7 @@ class ManualClarificationTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_false_answers_are_known_and_old_counter_form_can_finish(self):
         user, training = SimpleNamespace(id="user"), SimpleNamespace(id="training", primary_location_id=None, sections=[])
-        data = dict(form="catalog_manual", training_id="training", name="Engesh", grade="6A",
+        data = dict(form="catalog_manual", training_id="training", region="Гейкбаири", sector="Кебап", name="Engesh", grade="6A",
                     reachedTop=False, cleanAscent=False, style="with_falls", belay="lead")
         with patch("app.attempt_capture.complete_facts", AsyncMock()) as save, \
              patch("app.attempt_management.dialog_set", AsyncMock()) as store:
