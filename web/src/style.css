@@ -1161,3 +1161,14 @@ footer {
     scroll-behavior: auto !important;
   }
 }
+
+.belay-summary { margin: 20px 0; }
+.belay-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.belay-summary-card { padding: 20px; background: #f4f7f3; border-radius: 14px; }
+.belay-summary-card > span { display: block; font-size: 13px; color: #52665b; }
+.belay-summary-card > strong { display: block; font-size: 32px; margin-top: 10px; color: #24664f; }
+.belay-summary-card > strong small { font-size: 13px; font-weight: 400; }
+.belay-summary-card dl { display: flex; gap: 22px; flex-wrap: wrap; margin: 18px 0 0; }
+.belay-summary-card dt { font-size: 12px; color: #52665b; }
+.belay-summary-card dd { margin: 4px 0 0; font-size: 19px; font-weight: 600; }
+@media (max-width: 560px) { .belay-summary-grid { grid-template-columns: 1fr; } }

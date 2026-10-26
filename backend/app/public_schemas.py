@@ -198,8 +198,16 @@ class WebAttemptCreate(SummaryAttempt):
     environment: Literal["indoor", "outdoor"] = "outdoor"
 
 
+class BelayReachedCounts(BaseModel):
+    total: int
+    clean: int
+    nonClean: int
+    unknownClean: int
+
+
 class StatisticsSummary(BaseModel):
     model_config = ConfigDict(extra="allow")
+    reachedByBelay: dict[str, BelayReachedCounts] = Field(default_factory=dict)
     routesCount: int = 0
     attemptsCount: int = 0
     completedRoutes: int = 0

@@ -43,6 +43,7 @@ import { readStatisticsView, type StatisticsView } from "./statistics-view";
 import "./style.css";
 import { Pyramid } from "./Pyramid";
 import { AttemptForm } from "./AttemptForm";
+import { BelaySummary } from "./BelaySummary";
 import { TrainingControls } from "./TrainingControls";
 type Page = "overview" | "progress" | "trainings" | "profile";
 const navigation = [
@@ -785,6 +786,7 @@ function App() {
                               </div>
                             ))}
                           </div>
+                          <BelaySummary summary={s} advanced={advanced} />
                           <div className="maxima">
                             <span className="max-label">ТВОЙ МАКСИМУМ</span>
                             {(advanced
