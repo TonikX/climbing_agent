@@ -1,0 +1,100 @@
+.training-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid #dce4d8;
+  border-radius: 12px;
+  background: #edf2e7;
+  padding: 17px 20px;
+  margin-bottom: 22px;
+}
+.training-controls strong {
+  font-size: 14px;
+}
+.training-controls small {
+  display: block;
+  margin-top: 5px;
+  color: #68796c;
+  font-size: 12px;
+}
+.training-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.training-buttons button,
+.training-error button {
+  border: 1px solid #c1cebc;
+  border-radius: 8px;
+  background: #fafbf7;
+  padding: 11px 15px;
+  font: inherit;
+  font-size: 13px;
+}
+.training-buttons .training-primary {
+  background: #315c41;
+  color: white;
+  border-color: #315c41;
+}
+.training-error {
+  color: #852e24;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.training-dialog {
+  width: min(460px, calc(100% - 24px));
+  max-height: 90dvh;
+  overflow: auto;
+  border: 1px solid #dce4d8;
+  border-radius: 16px;
+  padding: 26px;
+  background: #fafbf7;
+  color: #233e35;
+}
+.training-dialog::backdrop {
+  background: #142c26a8;
+  backdrop-filter: blur(3px);
+}
+.training-dialog h2 {
+  font-size: 23px;
+  margin-top: 0;
+}
+.training-dialog p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.training-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 15px 0;
+  font-size: 13px;
+}
+.training-dialog input,
+.training-dialog select {
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid #cbd6c9;
+  border-radius: 8px;
+  background: white;
+  color: #233e35;
+  font: inherit;
+}
+.training-dialog .training-buttons {
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+@media (max-width: 560px) {
+  .training-controls {
+    align-items: stretch;
+    padding: 16px;
+  }
+  .training-buttons {
+    width: 100%;
+  }
+  .training-buttons button {
+    flex: 1;
+  }
+}

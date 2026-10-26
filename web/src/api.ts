@@ -147,6 +147,25 @@ export type BrowserSession = {
   csrfToken: string;
   expiresAt: string;
 };
+
+export async function activeTraining(
+  signal?: AbortSignal,
+): Promise<Training | null> {
+  // Statistics intentionally hide empty/test-only sessions; controls must see them.
+  let cursor: string | null = null;
+  do {
+    const page: { items: Training[]; next_cursor: string | null } =
+      await request(
+        "/trainings?include_test=true&limit=100" +
+          (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""),
+        signal,
+      );
+    const active = page.items.find((t) => t.status === "active");
+    if (active) return active;
+    cursor = page.next_cursor;
+  } while (cursor);
+  return null;
+}
 export function query(f: Filters) {
   const q = new URLSearchParams({ date_from: f.from, date_to: f.to });
   if (f.grade) q.set("grade", f.grade);

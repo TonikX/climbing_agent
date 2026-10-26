@@ -16,6 +16,37 @@ const api = await import(
   "data:text/javascript;base64," + Buffer.from(js).toString("base64")
 );
 
+test("training controls find an empty active training without date or statistics filters", async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push(url);
+    const q = new URL(url, "https://journal.test").searchParams;
+    assert.equal(q.get("include_test"), "true");
+    assert.equal(q.has("date_from"), false);
+    assert.equal(options.credentials, "include");
+    return new Response(
+      JSON.stringify(
+        q.has("cursor")
+          ? {
+              items: [{ id: "empty-active", status: "active", attempts: [] }],
+              next_cursor: null,
+            }
+          : {
+              items: [{ id: "completed", status: "completed" }],
+              next_cursor: "completed",
+            },
+      ),
+    );
+  };
+  try {
+    assert.equal((await api.activeTraining()).id, "empty-active");
+    assert.equal(calls.length, 2);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 test("attempt mutation sends JSON, session CSRF and stable retry key", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async (url, options) => {
@@ -63,7 +94,7 @@ const { readStatisticsView } = await import(
   "data:text/javascript;base64," + Buffer.from(viewJs).toString("base64")
 );
 
-test("statistics view respects a shared link, then browser preference, then simple default", () => {
+test("statistics view defaults to simple and honors only an explicit view link", () => {
   assert.equal(
     readStatisticsView("?view=advanced", () => "simple"),
     "advanced",
@@ -74,7 +105,7 @@ test("statistics view respects a shared link, then browser preference, then simp
   );
   assert.equal(
     readStatisticsView("?page=progress", () => "advanced"),
-    "advanced",
+    "simple",
   );
   assert.equal(
     readStatisticsView("?view=invalid", () => "invalid"),

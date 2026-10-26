@@ -39,14 +39,11 @@ import {
   type PlaceFilters,
 } from "./api";
 import * as demo from "./demo";
-import {
-  readStatisticsView,
-  statisticsViewKey,
-  type StatisticsView,
-} from "./statistics-view";
+import { readStatisticsView, type StatisticsView } from "./statistics-view";
 import "./style.css";
 import { Pyramid } from "./Pyramid";
 import { AttemptForm } from "./AttemptForm";
+import { TrainingControls } from "./TrainingControls";
 type Page = "overview" | "progress" | "trainings" | "profile";
 const navigation = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
@@ -96,9 +93,7 @@ const trainingContext = (t: Training) => {
 function App() {
   const params = new URLSearchParams(location.search);
   const [statisticsView, setStatisticsView] = useState<StatisticsView>(() =>
-    readStatisticsView(location.search, () =>
-      localStorage.getItem(statisticsViewKey),
-    ),
+    readStatisticsView(location.search),
   );
   const advanced = statisticsView === "advanced";
   const [isDemo, setDemo] = useState(params.get("demo") === "1");
@@ -165,11 +160,6 @@ function App() {
     if (filters.areaId) q.set("area_id", filters.areaId);
     q.set("view", statisticsView);
     history.replaceState(null, "", "?" + q);
-    try {
-      localStorage.setItem(statisticsViewKey, statisticsView);
-    } catch {
-      // Display preferences must not prevent access to the journal.
-    }
   }, [page, filters, isDemo, statisticsView]);
   useEffect(() => {
     const ac = new AbortController();
@@ -413,6 +403,19 @@ function App() {
               </span>
             )}
           </div>
+          {user && !busy && (
+            <TrainingControls
+              csrf={csrf}
+              demo={isDemo}
+              timezone={user.timezone}
+              refresh={retry}
+              onChanged={() => setRetry((v) => v + 1)}
+              onOpen={(t) => {
+                setSelected(t);
+                setPage("trainings");
+              }}
+            />
+          )}
           {isDemo && (
             <div className="demo-banner">
               <span>

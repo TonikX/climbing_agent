@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { X, Check, Search } from "lucide-react";
-import { request, type Training } from "./api";
+import { activeTraining, request, type Training } from "./api";
 import "./attempt-form.css";
 
 type Entry = {
@@ -212,23 +212,8 @@ export function AttemptForm({
     const ac = new AbortController();
     if (!demo)
       (async () => {
-        // include_test also returns empty and test-only active trainings.
-        let cursor: string | null = null;
-        do {
-          const q: string =
-            "/trainings?include_test=true&limit=100" +
-            (cursor ? "&cursor=" + encodeURIComponent(cursor) : "");
-          const page = await request<{
-            items: Training[];
-            next_cursor: string | null;
-          }>(q, ac.signal);
-          const active = page.items.find((t) => t.status === "active");
-          if (active) {
-            setTraining(active);
-            break;
-          }
-          cursor = page.next_cursor;
-        } while (cursor);
+        const active = await activeTraining(ac.signal);
+        if (!ac.signal.aborted) setTraining(active);
         setReady(true);
       })().catch((e) => {
         if (e.name !== "AbortError") setError(e.message);
