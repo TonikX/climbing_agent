@@ -111,8 +111,8 @@ class AttemptResponse(BaseModel):
     id: str
     sequence: int
     attempts: int
-    reached_top: bool
-    clean_ascent: bool
+    reached_top: bool | None
+    clean_ascent: bool | None
     style: str
     hangs: int | None
     falls: int | None
