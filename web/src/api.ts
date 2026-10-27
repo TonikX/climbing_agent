@@ -169,7 +169,9 @@ export async function activeTraining(
   return null;
 }
 export function query(f: Filters) {
-  const q = new URLSearchParams({ date_from: f.from, date_to: f.to });
+  const q = new URLSearchParams();
+  if (f.from) q.set("date_from", f.from);
+  if (f.to) q.set("date_to", f.to);
   if (f.grade) q.set("grade", f.grade);
   if (f.region) q.set("region", f.region);
   if (f.areaId) q.set("area_id", f.areaId);
@@ -178,7 +180,8 @@ export function query(f: Filters) {
 export async function dashboard(f: Filters, signal: AbortSignal) {
   const q = query(f);
   const [month, progress] = await Promise.all([
-    request<Summary & { grades: Grade[] }>("/statistics/month?" + q, signal),
+    request<Summary & { grades: Grade[] }>(
+      `/statistics/${!f.from && !f.to ? "all" : "month"}?` + q, signal),
     request<{ periods: Period[] }>("/statistics/progress?" + q, signal),
   ]);
   return {

@@ -396,7 +396,7 @@ async def grade_ascents(session: Session, uid: UserId,
 
 
 @router.get("/statistics/{scope}", response_model=StatisticsDTO, response_model_exclude_unset=True)
-async def stats(scope: Literal["week", "month", "progress", "grades", "locations", "projects", "records"],
+async def stats(scope: Literal["week", "month", "all", "progress", "grades", "locations", "projects", "records"],
                 session: Session, uid: UserId, date_from: str | None = None, date_to: str | None = None,
                 grade: str | None = Query(default=None, max_length=30),
                 region: str | None = Query(default=None, max_length=200),

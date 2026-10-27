@@ -50,10 +50,12 @@ export function Pyramid({
   grades,
   filters,
   demo,
+  simple = false,
 }: {
   grades: Grade[];
   filters: Filters;
   demo: boolean;
+  simple?: boolean;
 }) {
   const [selection, setSelection] = useState<{
     grade: string;
@@ -130,27 +132,26 @@ export function Pyramid({
     <section className="panel pyramid-panel">
       <div className="section-heading">
         <div>
-          <h2>Категории, стили и страховка</h2>
-          <p>Нажмите число, чтобы открыть соответствующие пролазы</p>
+          <h2>{simple ? "Пролазы по категориям" : "Категории, стили и страховка"}</h2>
+          <p>Нажмите категорию, чтобы открыть соответствующие пролазы</p>
         </div>
       </div>
-      <p className="pyramid-note">
+      {!simple && <p className="pyramid-note">
         Один выход на трассу учитывается один раз: по первому чистому пролазу, а
         если его не было — по последней попытке. Стиль и страховка считаются
         отдельно.
-      </p>
+      </p>}
       {!grades.length ? (
         <p className="empty">Нет реальных пролазов за выбранный период.</p>
       ) : (
         <div className="table-wrap">
-          <table className="category-style-table">
+          <table className={simple ? "" : "category-style-table"}>
             <thead>
               <tr>
                 <th>Категория</th>
-                <th>Выходы</th>
+                <th>{simple ? "Всего" : "Выходы"}</th>
                 <th>Чисто</th>
-                <th>Стиль</th>
-                <th>Тип страховки</th>
+                {!simple && <><th>Стиль</th><th>Тип страховки</th></>}
               </tr>
             </thead>
             <tbody>
@@ -166,7 +167,7 @@ export function Pyramid({
                   </td>
                   <td>{g.routesCount ?? 0}</td>
                   <td>{g.completedRoutes ?? 0}</td>
-                  <td>
+                  {!simple && <><td>
                     <div className="pyramid-counts">
                       {buckets.map((b) => (
                         <button
@@ -193,17 +194,17 @@ export function Pyramid({
                         </button>
                       ))}
                     </div>
-                  </td>
+                  </td></>}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      <p className="pyramid-note">
+      {!simple && <p className="pyramid-note">
         «Верхняя» — тип страховки. Например, Flash с верхней страховкой
         учитывается как стиль Flash и страховка «Верхняя».
-      </p>
+      </p>}
       {selection && (
         <section
           ref={details}

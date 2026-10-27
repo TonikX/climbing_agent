@@ -42,10 +42,9 @@ import { Pyramid } from "./Pyramid";
 import { AttemptForm } from "./AttemptForm";
 import { BelaySummary } from "./BelaySummary";
 import { TrainingControls } from "./TrainingControls";
-type Page = "overview" | "progress" | "trainings" | "profile";
+type Page = "overview" | "trainings" | "profile";
 const navigation = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
-  { id: "progress", label: "Прогресс", icon: ChartNoAxesCombined },
   { id: "trainings", label: "Тренировки", icon: NotebookTabs },
   { id: "profile", label: "Профиль", icon: UserRound },
 ] as const;
@@ -104,15 +103,18 @@ function App() {
   const iso = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const [filters, setFilters] = useState<Filters>({
-    from:
-      params.get("from") ||
-      iso(new Date(today.getFullYear(), today.getMonth(), 1)),
-    to: params.get("to") || iso(today),
+    from: params.has("from")
+      ? params.get("from")!
+      : iso(new Date(today.getFullYear(), today.getMonth(), 1)),
+    to: params.has("to") ? params.get("to")! : iso(today),
     grade: params.get("grade") || "",
     region: params.get("region") || "",
     areaId: params.get("area_id") || "",
   });
-  const [preset, setPreset] = useState("month");
+  const [preset, setPreset] = useState(
+    params.has("from") && params.get("from") === "" && params.has("to") && params.get("to") === ""
+      ? "all" : params.has("from") || params.has("to") ? "custom" : "month",
+  );
   const [mobile, setMobile] = useState(false);
   const [selected, setSelected] = useState<Training | null>(null);
   const [capture, setCapture] = useState(false);
@@ -236,7 +238,10 @@ function App() {
   }
   function choosePeriod(value: string) {
     setPreset(value);
-    if (value === "custom") return;
+    if (value === "all") {
+      setFilters({ ...filters, from: "", to: "" });
+      return;
+    }
     const end = new Date();
     const start = new Date(end);
     if (value === "month") start.setDate(1);
@@ -369,7 +374,6 @@ function App() {
                   ? "Тренировка"
                   : {
                       overview: "За каждым пролазом — прогресс.",
-                      progress: "Выше. Увереннее. Чище.",
                       trainings: "Твои тренировки",
                       profile: "Личный профиль",
                     }[page]}
@@ -379,7 +383,6 @@ function App() {
                   ? date(selected.local_date)
                   : {
                       overview: "Всё, над чем ты работаешь, в одном месте.",
-                      progress: "Посмотри, как меняются твои результаты.",
                       trainings:
                         "История выходов, маршрутов и маленьких побед.",
                       profile: "Один аккаунт для сайта и Telegram-бота.",
@@ -473,7 +476,7 @@ function App() {
                       ["week", "Неделя"],
                       ["month", "Месяц"],
                       ["year", "Год"],
-                      ["custom", "Свой период"],
+                      ["all", "Всё время"],
                     ].map(([id, title]) => (
                       <button
                         key={id}
@@ -608,7 +611,7 @@ function App() {
                   </div>
                 </div>
               )}
-              {(page === "overview" || page === "progress") && !selected && (
+              {page === "overview" && !selected && (
                 <div className="statistics-view">
                   <div>
                     <strong>Отображение статистики</strong>
@@ -699,22 +702,23 @@ function App() {
                                   <h3>
                                     {a.route_snapshot.name ?? "Без названия"}
                                   </h3>
-                                  <small>
-                                    Запись №{a.sequence} · попыток: {a.attempts}
-                                  </small>
                                 </div>
                                 <span
                                   className={
                                     a.clean_ascent ? "badge clean" : "badge"
                                   }
                                 >
-                                  {a.clean_ascent
+                                  {a.clean_ascent === true
                                     ? "✓ Чисто"
-                                    : a.reached_top
-                                      ? "Дошёл до конца"
-                                      : a.reached_top === null
-                                        ? "Результат не уточнён"
-                                        : "Не завершена"}
+                                    : a.reached_top === true
+                                      ? a.clean_ascent === false
+                                        ? "Дошёл до конца · не чисто"
+                                        : "Дошёл до конца · чистота неизвестна"
+                                      : a.reached_top === false
+                                        ? "Не долез"
+                                        : a.clean_ascent === false
+                                          ? "Не чисто · результат неизвестен"
+                                          : "Результат неизвестен"}
                                 </span>
                               </div>
                               <dl className="attempt-fields">
@@ -732,16 +736,7 @@ function App() {
                                     {a.falls ?? "—"} / {a.hangs ?? "—"}
                                   </dd>
                                 </div>
-                                <div>
-                                  <dt>Чистота</dt>
-                                  <dd>
-                                    {a.clean_ascent === null
-                                      ? "Не уточнена"
-                                      : a.clean_ascent
-                                        ? "Да"
-                                        : "Нет"}
-                                  </dd>
-                                </div>
+
                               </dl>
                               {a.notes && (
                                 <p className="attempt-note">{a.notes}</p>
@@ -796,7 +791,7 @@ function App() {
                         </>
                       )}
                       {advanced &&
-                        (page === "overview" || page === "progress") && (
+                        page === "overview" && (
                           <div className="charts">
                             <section className="panel">
                               <div className="section-heading">
@@ -931,129 +926,8 @@ function App() {
                             />
                           </div>
                         )}
-                      {!advanced &&
-                        (page === "overview" || page === "progress") && (
-                          <section className="panel">
-                            <div className="section-heading">
-                              <div>
-                                <h2>Пролазы по категориям</h2>
-                                <p>
-                                  Выходы на трассы и чистые прохождения за
-                                  выбранный период
-                                </p>
-                              </div>
-                            </div>
-                            {!data?.grades.length ? (
-                              <p className="empty">
-                                За выбранный период пролазов нет.
-                              </p>
-                            ) : (
-                              <div className="table-wrap">
-                                <table>
-                                  <thead>
-                                    <tr>
-                                      <th scope="col">Категория</th>
-                                      <th scope="col">Всего</th>
-                                      <th scope="col">Чисто</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {data.grades.map((g) => (
-                                      <tr key={g.grade}>
-                                        <td>
-                                          <span className="grade-chip">
-                                            {g.grade}
-                                          </span>
-                                        </td>
-                                        <td>{g.routesCount ?? 0}</td>
-                                        <td>{g.completedRoutes ?? 0}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                          </section>
-                        )}
-                      {!advanced && page === "progress" && (
-                        <section className="panel">
-                          <div className="section-heading">
-                            <div>
-                              <h2>Прогресс по месяцам</h2>
-                              <p>
-                                До 6 последних месяцев с тренировками в
-                                выбранном периоде
-                              </p>
-                            </div>
-                          </div>
-                          {!data?.periods.length ? (
-                            <p className="empty">
-                              В выбранном периоде тренировок нет.
-                            </p>
-                          ) : (
-                            <div className="table-wrap">
-                              <table>
-                                <thead>
-                                  <tr>
-                                    <th>Месяц</th>
-                                    <th>Чистые пролазы</th>
-                                    <th>Максимум чисто</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {data.periods.map((p) => (
-                                    <tr key={p.period}>
-                                      <td>
-                                        {month(p.period)} {p.period.slice(0, 4)}
-                                      </td>
-                                      <td>{p.completedRoutes ?? "—"}</td>
-                                      <td>{p.maxCompletedGrade ?? "—"}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                        </section>
-                      )}
-                      {advanced && page === "progress" && (
-                        <section className="panel">
-                          <div className="section-heading">
-                            <div>
-                              <h2>Категории в деталях</h2>
-                              <p>
-                                Статистика рассчитывается на сервере, тестовые
-                                записи исключены
-                              </p>
-                            </div>
-                          </div>
-                          <div className="table-wrap">
-                            <table>
-                              <thead>
-                                <tr>
-                                  <th>Категория</th>
-                                  <th>Выходы на трассы</th>
-                                  <th>Попытки</th>
-                                  <th>Чисто</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {data?.grades.map((g) => (
-                                  <tr key={g.grade}>
-                                    <td>
-                                      <span className="grade-chip">
-                                        {g.grade}
-                                      </span>
-                                    </td>
-                                    <td>{g.routesCount ?? "—"}</td>
-                                    <td>{g.attemptsCount ?? "—"}</td>
-                                    <td>{g.completedRoutes ?? "—"}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </section>
+                      {!advanced && page === "overview" && (
+                        <Pyramid grades={data?.grades ?? []} filters={filters} demo={isDemo} simple />
                       )}
                       {(page === "overview" || page === "trainings") && (
                         <section className="panel training-panel">
@@ -1113,11 +987,9 @@ function App() {
                                       : "не указаны"}
                                   </span>
                                 </div>
-                                <span className="training-duration">
-                                  {t.duration_minutes === null
-                                    ? "—"
-                                    : t.duration_minutes + " мин"}
-                                </span>
+                                {t.duration_minutes != null && (
+                                  <span className="training-duration">{t.duration_minutes} мин</span>
+                                )}
                                 <span
                                   className={
                                     "badge " +

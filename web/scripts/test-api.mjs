@@ -271,3 +271,26 @@ test("pyramid drill-down preserves filters and encodes grade/style/page", async 
     globalThis.fetch = original;
   }
 });
+
+test("all-time requests omit date bounds and preserve other filters", async () => {
+  const original = globalThis.fetch, calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return new Response(JSON.stringify({ grades: [], periods: [], items: [], next_cursor: null }));
+  };
+  try {
+    const filters = { from: "", to: "", grade: "6A", region: "Region", areaId: "area" };
+    const signal = new AbortController().signal;
+    await api.dashboard(filters, signal);
+    await api.trainingPage(filters, null, signal);
+    assert.ok(calls.some(url => url.includes("/statistics/all?")));
+    for (const url of calls) {
+      const q = new URL(url, "https://journal.test").searchParams;
+      assert.equal(q.has("date_from"), false);
+      assert.equal(q.has("date_to"), false);
+      assert.equal(q.get("grade"), "6A");
+      assert.equal(q.get("region"), "Region");
+      assert.equal(q.get("area_id"), "area");
+    }
+  } finally { globalThis.fetch = original; }
+});

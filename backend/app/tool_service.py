@@ -807,7 +807,7 @@ async def _statistics(session: AsyncSession, p: dict[str, Any]) -> dict[str, Any
             **_period_summary(previous_rows),
         }
         result["comparison"] = _comparison(result, result["previousPeriod"])
-    if scope == "month":
+    if scope in ("month", "all"):
         result["grades"] = _grade_breakdown(attempts)
     if scope == "projects":
         latest: dict[str, RouteAttempt] = {}
