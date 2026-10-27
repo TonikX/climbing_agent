@@ -134,7 +134,8 @@ async def complete_facts(session, user, job, training, facts, reply, browse=Fals
     if dialog and dialog.data.get("training_id") == training.id:
         await session.delete(dialog)
     saved = await session.get(RouteAttempt, dto["attemptId"])
-    await reply(session, job, "Сохранено.\n" + await card(session, saved),
+    await reply(session, job, "Сохранено.\n" + await card(session, saved) +
+                "\n\nХотите подробнее описать пролаз? Нажмите «✏️ Изменить», чтобы дополнить запись.",
                 [[button("✏️ Изменить", "am:pick:" + saved.id)],
                  [button("🧗 Текущая тренировка", "training:details:current")], [button("← Главное меню", "journal")]])
 
