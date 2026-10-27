@@ -14,12 +14,19 @@ async def handle(session, user, job, reply) -> bool:
     command = job.payload["command"]
     dialog = await session.get(DialogState, user.id)
     if command in ("attempt:ai", "attempt:help", "/attempt"):
-        if dialog:
+        if dialog and command != "attempt:help":
             await session.delete(dialog)
             await session.flush()
         active = await _active(session, user.id)
         if not active:
             await reply(session, job, "Сначала начните тренировку.", menu(False))
+        elif command != "attempt:help":
+            await reply(session, job,
+                "Отправьте текст или голосовое: «Гейкбаири, Кебап, Engesh 6a, нижняя страховка».\n"
+                "Нужны район, сектор, трасса, категория и страховка. Известное бот возьмёт из БД, недостающее — уточнит.",
+                [[button("📖 Подробная инструкция", "attempt:help")],
+                 [button("✍️ Заполнить вручную", "attempt:form")],
+                 [button("← Текущая тренировка", "training:details:current")]])
         else:
             await reply(session, job,
                 "Отправьте текст или голосовое. Пример: «Гейкбаири, Кебап, Engesh 6a, нижняя страховка».\n\n"
