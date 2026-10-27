@@ -16,6 +16,40 @@ const api = await import(
   "data:text/javascript;base64," + Buffer.from(js).toString("base64")
 );
 
+test("attempt edit reloads canonical training after a versioned patch", async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push(url);
+    assert.equal(options.credentials, "include");
+    if (options.method === "PATCH") {
+      assert.equal(url, "/api/v1/attempts/attempt%2F1");
+      assert.equal(options.headers["X-CSRF-Token"], "csrf");
+      assert.equal(options.headers["Idempotency-Key"], "edit-once");
+      assert.deepEqual(JSON.parse(options.body), { expected_version: 3, grade: "6а+", notes: null });
+      return new Response(JSON.stringify({ success: true, version: 4 }));
+    }
+    assert.equal(url, "/api/v1/trainings/training%2F1");
+    return new Response(JSON.stringify({ id: "training/1", version: 4, attempts: [{ route_snapshot: { grade: "6A+" } }] }));
+  };
+  try {
+    const saved = await api.editAttempt("training/1", "attempt/1", { expected_version: 3, grade: "6а+", notes: null }, "csrf", "edit-once");
+    assert.equal(saved.version, 4);
+    assert.equal(saved.attempts[0].route_snapshot.grade, "6A+");
+    assert.equal(calls.length, 2);
+  } finally { globalThis.fetch = original; }
+});
+
+test("attempt edit stops on a stale version without loading or replacing training", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; return new Response("", { status: 409 }); };
+  try {
+    await assert.rejects(api.editAttempt("training", "attempt", { expected_version: 2 }, "csrf", "key"), (e) => e.status === 409);
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = original; }
+});
+
 test("training patch sends version, explicit clears and browser CSRF", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async (url, options) => {

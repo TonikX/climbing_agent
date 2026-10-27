@@ -152,6 +152,15 @@ export type BrowserSession = {
   expiresAt: string;
 };
 
+export async function editAttempt(
+  trainingId: string, attemptId: string, body: Record<string, unknown>, csrf: string, key: string,
+): Promise<Training> {
+  await request(`/attempts/${encodeURIComponent(attemptId)}`, undefined, {
+    method: "PATCH", csrf, body, key,
+  });
+  return request<Training>(`/trainings/${encodeURIComponent(trainingId)}`);
+}
+
 export async function activeTraining(
   signal?: AbortSignal,
 ): Promise<Training | null> {

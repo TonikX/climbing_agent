@@ -3,7 +3,7 @@ import { X, Check, Search } from "lucide-react";
 import { activeTraining, request, type Training } from "./api";
 import "./attempt-form.css";
 
-type Entry = {
+export type Entry = {
   id?: string;
   name: string;
   grade?: string | null;
@@ -29,13 +29,14 @@ const belays = [
   ["bouldering", "Боулдеринг"],
 ];
 
-function CatalogField({
+export function CatalogField({
   title,
   kind,
   value,
   parent,
   onChange,
   demo,
+  required = true,
 }: {
   title: string;
   kind: Kind;
@@ -43,6 +44,7 @@ function CatalogField({
   parent?: string;
   onChange: (v: Entry) => void;
   demo: boolean;
+  required?: boolean;
 }) {
   const id = useId();
   const [items, setItems] = useState<Entry[]>([]);
@@ -94,13 +96,13 @@ function CatalogField({
       }}
     >
       <label htmlFor={id}>
-        {title} <span aria-hidden="true">*</span>
+        {title} {required && <span aria-hidden="true">*</span>}
       </label>
       <div className="capture-search">
         <Search size={16} />
         <input
           id={id}
-          required
+          required={required}
           maxLength={200}
           autoComplete="off"
           value={value.name}

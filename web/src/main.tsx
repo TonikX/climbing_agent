@@ -28,6 +28,7 @@ import {
   trainingPage,
   type Filters,
   type Training,
+  type Attempt,
   type Summary,
   type Grade,
   type Period,
@@ -43,6 +44,7 @@ import { AttemptForm } from "./AttemptForm";
 import { BelaySummary } from "./BelaySummary";
 import { TrainingControls } from "./TrainingControls";
 import { TrainingEdit } from "./TrainingEdit";
+import { AttemptEdit } from "./AttemptEdit";
 type Page = "overview" | "trainings" | "profile";
 const navigation = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
@@ -119,6 +121,7 @@ function App() {
   const [mobile, setMobile] = useState(false);
   const [selected, setSelected] = useState<Training | null>(null);
   const [editing, setEditing] = useState(false);
+  const [editingAttempt, setEditingAttempt] = useState<Attempt | null>(null);
   const reopenTraining = useRef<Training | null>(null);
   const [capture, setCapture] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -174,6 +177,7 @@ function App() {
     setSelected(reopenTraining.current);
     reopenTraining.current = null;
     setEditing(false);
+    setEditingAttempt(null);
     setData(null);
     setTrainings([]);
     setUser(null);
@@ -240,6 +244,17 @@ function App() {
     setPage(p);
     setSelected(null);
     setMobile(false);
+  }
+  function onTrainingSaved(updated: Training) {
+    setEditing(false);
+    setEditingAttempt(null);
+    setSelected(updated);
+    if (isDemo) {
+      setTrainings((items) => items.map((t) => t.id === updated.id ? updated : t));
+    } else {
+      reopenTraining.current = updated;
+      setRetry((v) => v + 1);
+    }
   }
   function choosePeriod(value: string) {
     setPreset(value);
@@ -751,6 +766,11 @@ function App() {
                               {a.notes && (
                                 <p className="attempt-note">{a.notes}</p>
                               )}
+                              <div className="training-buttons">
+                                <button onClick={() => setEditingAttempt(a)}>
+                                  Изменить пролаз
+                                </button>
+                              </div>
                             </article>
                           ))
                       )}
@@ -1096,16 +1116,18 @@ function App() {
               csrf={csrf}
               demo={isDemo}
               onClose={() => setEditing(false)}
-              onSaved={(updated) => {
-                setEditing(false);
-                setSelected(updated);
-                if (isDemo) {
-                  setTrainings((items) => items.map((t) => t.id === updated.id ? updated : t));
-                } else {
-                  reopenTraining.current = updated;
-                  setRetry((v) => v + 1);
-                }
-              }}
+              onSaved={onTrainingSaved}
+            />
+          )}
+          {editingAttempt && selected && (
+            <AttemptEdit
+              key={editingAttempt.id}
+              attempt={editingAttempt}
+              training={selected}
+              csrf={csrf}
+              demo={isDemo}
+              onClose={() => setEditingAttempt(null)}
+              onSaved={onTrainingSaved}
             />
           )}
           {capture && user && (
