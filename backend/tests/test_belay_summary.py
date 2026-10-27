@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from app.statistics_belays import reached_by_belay
+from app.statistics_belays import reached_by_belay, ascents_by_belay
 from app.tool_service import _summary
 from app.public_schemas import StatisticsDTO
 
@@ -26,3 +26,26 @@ class BelaySummaryTest(unittest.TestCase):
         self.assertEqual(reached_by_belay(rows)["top_rope"]["nonClean"], 1)
         for counts in reached_by_belay([]).values():
             self.assertTrue(all(value == 0 for value in counts.values()))
+
+    def test_routes_and_recorded_ascents_are_separate_and_belay_totals_add_up(self):
+        rows = [self.attempt("same", clean=True), self.attempt("same", clean=False),
+                self.attempt("same", "top_rope", clean=True), self.attempt("failed", top=False),
+                self.attempt("unknown", top=None), self.attempt("test", test=True),
+                self.attempt("auto", "auto_belay", clean=None), self.attempt("boulder", "bouldering"),
+                self.attempt("legacy", None, clean=True)]
+        summary = _summary(rows)
+        self.assertEqual(summary["routesCount"], 6)
+        self.assertEqual(summary["reachedTopRoutes"], 4)
+        self.assertEqual(summary["ascentsCount"], 6)
+        counts = summary["ascentsByBelay"]
+        self.assertEqual(counts["lead"]["total"], 2)
+        self.assertEqual(summary["reachedByBelay"]["lead"]["total"], 1)
+        self.assertEqual(counts["lead"]["clean"], 1)
+        self.assertEqual(counts["lead"]["nonClean"], 1)
+        self.assertEqual(sum(item["total"] for item in counts.values()), summary["ascentsCount"])
+        for item in counts.values():
+            self.assertEqual(item["total"], item["clean"] + item["nonClean"] + item["unknownClean"])
+        dto = StatisticsDTO.model_validate(summary)
+        self.assertEqual(dto.ascentsCount, 6)
+        self.assertEqual(dto.ascentsByBelay["unknown"].total, 1)
+        self.assertTrue(all(item["total"] == 0 for item in ascents_by_belay([]).values()))

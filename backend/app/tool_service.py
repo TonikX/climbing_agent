@@ -569,7 +569,7 @@ def _historical_grade(attempt: RouteAttempt) -> str | None:
 
 
 def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
-    from app.statistics_belays import reached_by_belay
+    from app.statistics_belays import reached_by_belay, ascents_by_belay
     attempts = [a for a in attempts if not a.is_test]
     sessions = {a.route_session_key or a.id for a in attempts}
     completed = {a.route_session_key or a.id for a in attempts if a.clean_ascent is True}
@@ -590,6 +590,8 @@ def _summary(attempts: list[RouteAttempt]) -> dict[str, Any]:
               for style in ("onsight", "flash", "redpoint", "unknown")}
     return {
         "reachedByBelay": reached_by_belay(attempts),
+        "ascentsByBelay": ascents_by_belay(attempts),
+        "ascentsCount": sum(a.reached_top is True for a in attempts),
         "routesCount": len(sessions),
         "attemptsCount": attempts_count,
         "completionRate": len(completed) / len(sessions) if sessions else 0,

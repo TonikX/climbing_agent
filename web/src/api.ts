@@ -1,6 +1,8 @@
 export type BelayReachedCounts = { total: number; clean: number; nonClean: number; unknownClean: number };
 export type Summary = {
-  reachedByBelay?: Partial<Record<"lead" | "top_rope", BelayReachedCounts>>;
+  ascentsCount?: number;
+  ascentsByBelay?: Partial<Record<"lead" | "top_rope" | "auto_belay" | "bouldering" | "unknown", BelayReachedCounts>>;
+  reachedByBelay?: Partial<Record<"lead" | "top_rope" | "auto_belay" | "bouldering" | "unknown", BelayReachedCounts>>;
   trainingsCount?: number;
   routesCount?: number;
   attemptsCount?: number;

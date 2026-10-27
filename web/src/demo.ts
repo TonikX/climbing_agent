@@ -2,6 +2,11 @@ import { demoBuckets, demoDimensions } from "./pyramidDemo";
 import type { Grade, Period, Summary, Training } from "./api";
 // Isolated fixtures: never merged with API responses or sent to the backend.
 export const summary: Summary = {
+  ascentsCount: 53,
+  ascentsByBelay: {
+    lead: { total: 37, clean: 25, nonClean: 10, unknownClean: 2 },
+    top_rope: { total: 16, clean: 7, nonClean: 8, unknownClean: 1 },
+  },
   reachedByBelay: { lead: { total: 28, clean: 19, nonClean: 7, unknownClean: 2 }, top_rope: { total: 10, clean: 5, nonClean: 4, unknownClean: 1 } },
   trainingsCount: 8,
   routesCount: 46,

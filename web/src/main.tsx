@@ -296,7 +296,8 @@ function App() {
   const authenticated = !!user;
   const counts = [
     ["Тренировки", s?.trainingsCount, NotebookTabs],
-    ["Пролазы", s?.routesCount, Mountain],
+    ["Трассы", s?.routesCount, Mountain],
+    ["Пролазы", s?.ascentsCount, Mountain],
   ] as const;
 
   return (
@@ -791,7 +792,7 @@ function App() {
                                 </div>
                                 <strong>{value ?? "—"}</strong>
                                 <small>
-                                  За выбранный период
+                                  {title === "Пролазы" ? "Дошёл до конца" : "За выбранный период"}
                                 </small>
                               </div>
                             ))}

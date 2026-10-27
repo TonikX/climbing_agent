@@ -218,6 +218,8 @@ class BelayReachedCounts(BaseModel):
 class StatisticsSummary(BaseModel):
     model_config = ConfigDict(extra="allow")
     reachedByBelay: dict[str, BelayReachedCounts] = Field(default_factory=dict)
+    ascentsByBelay: dict[str, BelayReachedCounts] = Field(default_factory=dict)
+    ascentsCount: int = 0
     routesCount: int = 0
     attemptsCount: int = 0
     completedRoutes: int = 0
