@@ -1,4 +1,5 @@
 from datetime import date
+from datetime import date as CalendarDate
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -97,11 +98,20 @@ class AttemptPatch(AttemptChanges):
 
 
 class TrainingPatch(Strict):
+    model_config = ConfigDict(extra="forbid")
     expected_version: int = Field(ge=1)
-    duration_minutes: int | None = Field(default=None, ge=1)
+    date: CalendarDate | None = None
     environment: Literal["indoor", "outdoor", "unknown"] | None = None
-    physical_state: str | None = Field(default=None, max_length=1000)
-    notes: str | None = Field(default=None, max_length=2000)
+    duration_minutes: int | None = Field(default=None, ge=1, le=10080)
+    physical_state: str | None = Field(default=None, max_length=2000)
+    notes: str | None = Field(default=None, max_length=10000)
+
+    @field_validator("date", "environment", mode="before")
+    @classmethod
+    def required_when_present(cls, value):
+        if value is None:
+            raise ValueError("Value cannot be null")
+        return value
 
 
 class GearWrite(Strict):

@@ -16,6 +16,25 @@ const api = await import(
   "data:text/javascript;base64," + Buffer.from(js).toString("base64")
 );
 
+test("training patch sends version, explicit clears and browser CSRF", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "/api/v1/trainings/training-1");
+    assert.equal(options.method, "PATCH");
+    assert.equal(options.credentials, "include");
+    assert.equal(options.headers["X-CSRF-Token"], "csrf");
+    assert.equal(options.headers["Idempotency-Key"], "edit-once");
+    assert.deepEqual(JSON.parse(options.body), { expected_version: 3, notes: null });
+    return new Response(JSON.stringify({ id: "training-1", version: 4 }));
+  };
+  try {
+    const saved = await api.request("/trainings/training-1", undefined, {
+      method: "PATCH", csrf: "csrf", key: "edit-once", body: { expected_version: 3, notes: null },
+    });
+    assert.equal(saved.version, 4);
+  } finally { globalThis.fetch = original; }
+});
+
 test("training controls find an empty active training without date or statistics filters", async () => {
   const original = globalThis.fetch;
   const calls = [];

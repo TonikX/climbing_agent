@@ -102,6 +102,24 @@ async def list_trainings(
     )).all())
 
 
+async def edit_training(session: AsyncSession, user_id: str, training_id: str, command) -> TrainingSession:
+    training = await session.scalar(select(TrainingSession).where(
+        TrainingSession.id == training_id, TrainingSession.user_id == user_id
+    ).options(selectinload(TrainingSession.attempts)).with_for_update())
+    if not training:
+        raise HTTPException(404, "Training not found")
+    if training.version != command.expected_version:
+        raise HTTPException(409, "Training changed; reload before editing")
+    changes = command.model_dump(exclude_unset=True, exclude={"expected_version"})
+    if not changes:
+        raise HTTPException(422, "Specify at least one changed field")
+    for field, value in changes.items():
+        setattr(training, "local_date" if field == "date" else field, value)
+    training.version += 1
+    await session.flush()
+    return training
+
+
 async def append_attempt(
     session: AsyncSession, user_id: str, training_id: str, command: AttemptCreate
 ) -> RouteAttempt:

@@ -69,6 +69,7 @@ export const trainings: Training[] = [
   "2026-10-15",
 ].map((date, i) => ({
   id: "demo-" + i,
+  version: 1,
   local_date: date,
   status: i === 0 ? "active" : "completed",
   environment: "outdoor",

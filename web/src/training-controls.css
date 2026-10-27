@@ -82,6 +82,12 @@
   color: #233e35;
   font: inherit;
 }
+.training-edit-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.training-dialog textarea {
+  width: 100%; box-sizing: border-box; padding: 10px;
+  border: 1px solid #cbd6c9; border-radius: 8px;
+  background: white; color: #233e35; font: inherit; resize: vertical;
+}
 .training-dialog .training-buttons {
   justify-content: flex-end;
   margin-top: 22px;

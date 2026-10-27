@@ -83,6 +83,8 @@ export type Attempt = {
 };
 export type Training = {
   id: string;
+  version: number;
+  physical_state?: string | null;
   local_date: string;
   status: string;
   environment: string;
@@ -123,7 +125,7 @@ export class ApiError extends Error {
 export async function request<T>(
   path: string,
   signal?: AbortSignal,
-  mutation?: { csrf: string; method: "POST"; body?: unknown; key?: string },
+  mutation?: { csrf: string; method: "POST" | "PATCH"; body?: unknown; key?: string },
 ): Promise<T> {
   const r = await fetch("/api/v1" + path, {
     credentials: "include",

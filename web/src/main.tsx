@@ -42,6 +42,7 @@ import { Pyramid } from "./Pyramid";
 import { AttemptForm } from "./AttemptForm";
 import { BelaySummary } from "./BelaySummary";
 import { TrainingControls } from "./TrainingControls";
+import { TrainingEdit } from "./TrainingEdit";
 type Page = "overview" | "trainings" | "profile";
 const navigation = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
@@ -117,6 +118,8 @@ function App() {
   );
   const [mobile, setMobile] = useState(false);
   const [selected, setSelected] = useState<Training | null>(null);
+  const [editing, setEditing] = useState(false);
+  const reopenTraining = useRef<Training | null>(null);
   const [capture, setCapture] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [csrf, setCsrf] = useState("");
@@ -168,7 +171,9 @@ function App() {
     setCursor(null);
     setBusy(true);
     setError(null);
-    setSelected(null);
+    setSelected(reopenTraining.current);
+    reopenTraining.current = null;
+    setEditing(false);
     setData(null);
     setTrainings([]);
     setUser(null);
@@ -680,12 +685,17 @@ function App() {
                               : selected.duration_minutes + " мин"}
                           </p>
                         </div>
-                        <span className="badge">
-                          {selected.status === "active"
-                            ? "Идёт сейчас"
-                            : "Завершена"}
-                        </span>
+                        <div className="training-buttons">
+                          <button onClick={() => setEditing(true)}>
+                            Изменить тренировку
+                          </button>
+                          <span className="badge">
+                            {selected.status === "active" ? "Идёт сейчас" : "Завершена"}
+                          </span>
+                        </div>
                       </div>
+                      {selected.physical_state && <p>Самочувствие: {selected.physical_state}</p>}
+                      {selected.notes && <p className="attempt-note">{selected.notes}</p>}
                       {selected.attempts.filter((a) => !a.is_test).length ===
                       0 ? (
                         <p className="empty">Реальных попыток пока нет.</p>
@@ -1078,6 +1088,25 @@ function App() {
                 </>
               )}
             </>
+          )}
+          {editing && selected && (
+            <TrainingEdit
+              key={selected.id}
+              training={selected}
+              csrf={csrf}
+              demo={isDemo}
+              onClose={() => setEditing(false)}
+              onSaved={(updated) => {
+                setEditing(false);
+                setSelected(updated);
+                if (isDemo) {
+                  setTrainings((items) => items.map((t) => t.id === updated.id ? updated : t));
+                } else {
+                  reopenTraining.current = updated;
+                  setRetry((v) => v + 1);
+                }
+              }}
+            />
           )}
           {capture && user && (
             <AttemptForm

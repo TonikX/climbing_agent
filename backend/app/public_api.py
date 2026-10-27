@@ -419,13 +419,17 @@ async def versioned_training(session, uid, training_id, expected):
 @router.patch("/trainings/{training_id}")
 async def patch_training(training_id: str, command: TrainingPatch, session: Session, uid: UserId, key: Key = None):
     async def action():
-        item = await versioned_training(session, uid, training_id, command.expected_version)
-        for key, value in command.model_dump(exclude_unset=True, exclude={"expected_version"}).items():
-            if key == "environment" and value is None:
-                raise HTTPException(422, "environment cannot be null")
-            setattr(item, key, value)
-        item.version += 1
-        return {"id": item.id, "version": item.version}
+        from app.service import edit_training
+        from app.schemas import TrainingResponse
+        from app.training_places import enrich_trainings
+        from types import SimpleNamespace
+        item = await edit_training(session, uid, training_id, command)
+        dto = TrainingResponse.model_validate(item).model_dump(mode="json")
+        dto["attempts"] = [a for a in dto["attempts"] if not a["is_test"]]
+        visible = SimpleNamespace(id=item.id, primary_location_id=item.primary_location_id,
+            attempts=[a for a in item.attempts if not a.is_test])
+        dto.update((await enrich_trainings(session, [visible]))[item.id])
+        return dto
     return await run_mutation(session, uid, f"rest:patch-training:{training_id}", key,
                               command.model_dump(mode="json", exclude_unset=True), action)
 
